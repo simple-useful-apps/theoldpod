@@ -40,7 +40,7 @@
 
                 Tab("Playlists", systemImage: "list.bullet", value: RootTab.playlists) {
                     NavigationStack {
-                        PlaylistsPlaceholderView()
+                        PlaylistsListView(coordinator: coordinator)
                             .navigationTitle("Playlists")
                     }
                 }

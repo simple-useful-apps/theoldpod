@@ -1,17 +1,32 @@
 import AppFeatures
+import CloudFiles
 import DesignSystem
 import Domain
 import SwiftData
 import SwiftUI
+import UniformTypeIdentifiers
 
-/// The Mac window's root: a sidebar (Songs/Artists/Albums, plus a Playlists
-/// placeholder) and a detail pane, with the persistent player bar pinned to
-/// the very top of the whole window — spanning sidebar and detail alike, the
-/// way iTunes' transport bar always sat above everything else.
+/// The Mac window's root: a sidebar (Songs/Artists/Albums, plus user
+/// playlists) and a detail pane, with the persistent player bar pinned to the
+/// very top of the whole window — spanning sidebar and detail alike, the way
+/// iTunes' transport bar always sat above everything else. Also owns MP3
+/// import: a toolbar button and window-wide drag-and-drop, both funneled
+/// through `ImportService`.
 struct MacRootView: View {
     private let coordinator: LibraryCoordinator
 
+    @Environment(\.modelContext) private var modelContext
+    @Query(sort: \Playlist.createdAt) private var playlists: [Playlist]
+
     @State private var selection: SidebarItem? = .songs
+
+    @State private var playlistPendingRename: Playlist?
+    @State private var renameText = ""
+    @State private var playlistPendingDelete: Playlist?
+
+    @State private var isImporterPresented = false
+    @State private var isImporting = false
+    @State private var importSkippedCount: Int?
 
     init(coordinator: LibraryCoordinator) {
         self.coordinator = coordinator
@@ -26,6 +41,45 @@ struct MacRootView: View {
         .safeAreaInset(edge: .top, spacing: 0) {
             PlayerBarView(player: coordinator.player, artworkDirectory: coordinator.artworkDirectory)
         }
+        .toolbar {
+            ToolbarItem(placement: .automatic) {
+                if isImporting {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+            }
+            ToolbarItem(placement: .automatic) {
+                Button {
+                    isImporterPresented = true
+                } label: {
+                    Label("Import", systemImage: "square.and.arrow.down")
+                }
+                .help("Import MP3s into the library")
+            }
+        }
+        .fileImporter(
+            isPresented: $isImporterPresented,
+            allowedContentTypes: [.mp3],
+            allowsMultipleSelection: true
+        ) { result in
+            if case let .success(urls) = result {
+                startImport(of: urls)
+            }
+        }
+        .dropDestination(for: URL.self) { urls, _ in
+            startImport(of: urls)
+        }
+        .alert(
+            "Some Files Couldn\u{2019}t Be Imported",
+            isPresented: Binding(
+                get: { importSkippedCount != nil },
+                set: { if !$0 { importSkippedCount = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("\(importSkippedCount ?? 0) file\((importSkippedCount ?? 0) == 1 ? "" : "s") couldn\u{2019}t be imported.")
+        }
         .task {
             coordinator.start()
         }
@@ -38,14 +92,66 @@ struct MacRootView: View {
                 Label("Artists", systemImage: "music.mic").tag(SidebarItem.artists)
                 Label("Albums", systemImage: "square.stack").tag(SidebarItem.albums)
             }
-            Section("Playlists") {
-                Text("Playlists arrive in the next update")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .selectionDisabled()
+            Section {
+                ForEach(playlists) { playlist in
+                    Label(playlist.name, systemImage: "music.note.list")
+                        .tag(SidebarItem.playlist(playlist.persistentModelID))
+                        .contextMenu {
+                            Button("Rename\u{2026}") { beginRename(playlist) }
+                            Divider()
+                            Button("Delete", role: .destructive) { playlistPendingDelete = playlist }
+                        }
+                }
+            } header: {
+                HStack {
+                    Text("Playlists")
+                    Spacer()
+                    Button {
+                        createPlaylist()
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                    .buttonStyle(.borderless)
+                    .help("New Playlist")
+                }
             }
         }
         .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 260)
+        .alert(
+            "Rename Playlist",
+            isPresented: Binding(
+                get: { playlistPendingRename != nil },
+                set: { if !$0 { playlistPendingRename = nil } }
+            )
+        ) {
+            TextField("Name", text: $renameText)
+            Button("Save") {
+                if let playlist = playlistPendingRename {
+                    PlaylistOps.rename(playlist, to: renameText, in: modelContext)
+                }
+                playlistPendingRename = nil
+            }
+            Button("Cancel", role: .cancel) {
+                playlistPendingRename = nil
+            }
+        }
+        .confirmationDialog(
+            "Delete Playlist?",
+            isPresented: Binding(
+                get: { playlistPendingDelete != nil },
+                set: { if !$0 { playlistPendingDelete = nil } }
+            ),
+            presenting: playlistPendingDelete
+        ) { playlist in
+            Button("Delete \u{201C}\(playlist.name)\u{201D}", role: .destructive) {
+                deletePlaylist(playlist)
+            }
+            Button("Cancel", role: .cancel) {
+                playlistPendingDelete = nil
+            }
+        } message: { _ in
+            Text("This can\u{2019}t be undone.")
+        }
     }
 
     @ViewBuilder
@@ -60,12 +166,59 @@ struct MacRootView: View {
         case .albums:
             AlbumsDetailView(coordinator: coordinator)
                 .navigationTitle("Albums")
+        case let .playlist(id):
+            if let playlist = playlists.first(where: { $0.persistentModelID == id }) {
+                PlaylistDetailView(playlist: playlist, coordinator: coordinator)
+                    .navigationTitle(playlist.name)
+            } else {
+                ContentUnavailableView(
+                    "Playlist Deleted",
+                    systemImage: "music.note.list",
+                    description: Text("Select another playlist from the sidebar.")
+                )
+            }
+        }
+    }
+
+    // MARK: - Playlist sidebar actions
+
+    private func createPlaylist() {
+        let playlist = PlaylistOps.create(name: "New Playlist", in: modelContext)
+        selection = .playlist(playlist.persistentModelID)
+        beginRename(playlist)
+    }
+
+    private func beginRename(_ playlist: Playlist) {
+        renameText = playlist.name
+        playlistPendingRename = playlist
+    }
+
+    private func deletePlaylist(_ playlist: Playlist) {
+        if selection == .playlist(playlist.persistentModelID) {
+            selection = .songs
+        }
+        PlaylistOps.delete(playlist, in: modelContext)
+        playlistPendingDelete = nil
+    }
+
+    // MARK: - Import
+
+    private func startImport(of urls: [URL]) {
+        guard !urls.isEmpty else { return }
+        isImporting = true
+        Task {
+            let result = await ImportService(libraryRoot: coordinator.libraryRoot).importFiles(at: urls)
+            isImporting = false
+            if !result.skipped.isEmpty {
+                importSkippedCount = result.skipped.count
+            }
         }
     }
 }
 
 private enum SidebarItem: Hashable {
     case songs, artists, albums
+    case playlist(PersistentIdentifier)
 }
 
 /// Artists list (left) | songs table filtered to the selected artist, or all
