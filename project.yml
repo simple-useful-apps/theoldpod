@@ -1,0 +1,68 @@
+name: TheOldPod
+options:
+  bundleIdPrefix: com.mattreed
+  deploymentTarget:
+    iOS: "26.0"
+    macOS: "26.0"
+  createIntermediateGroups: true
+
+packages:
+  OldPodKit:
+    path: Packages/OldPodKit
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+
+targets:
+  TheOldPod-iOS:
+    type: application
+    platform: iOS
+    productName: TheOldPod
+    sources:
+      - Apps/iOS/Sources
+      - Apps/iOS/Resources
+    dependencies:
+      - package: OldPodKit
+        product: OldPodKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.mattreed.theoldpod
+        TARGETED_DEVICE_FAMILY: "1"
+    info:
+      path: Apps/iOS/Info.plist
+      properties:
+        CFBundleDisplayName: theoldpod
+        UILaunchScreen: {}
+        UIBackgroundModes: [audio]
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        ITSAppUsesNonExemptEncryption: false
+
+  TheOldPod-macOS:
+    type: application
+    platform: macOS
+    productName: TheOldPod
+    sources:
+      - Apps/macOS/Sources
+      - Apps/macOS/Resources
+    dependencies:
+      - package: OldPodKit
+        product: OldPodKit
+    entitlements:
+      path: Apps/macOS/TheOldPod-macOS.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.files.user-selected.read-only: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.mattreed.theoldpod.mac
+        # Ad-hoc signing so unsigned dev builds run locally with the sandbox.
+        # Real signing (DEVELOPMENT_TEAM) arrives with iCloud entitlements in M5.
+        CODE_SIGN_IDENTITY: "-"
+        ENABLE_HARDENED_RUNTIME: false
+    info:
+      path: Apps/macOS/Info.plist
+      properties:
+        CFBundleDisplayName: theoldpod
+        LSApplicationCategoryType: public.app-category.music
