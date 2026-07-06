@@ -1,17 +1,20 @@
 import DesignSystem
 import Domain
+import PlaybackEngine
 import SwiftData
 import SwiftUI
 
 /// M1 minimal songs list: every `Track` in the library, sorted by title, with
 /// no grouping/filtering — the tabbed Artists/Albums/Playlists UI lands in M3.
+/// M2 adds tap-to-play: tapping a row plays the whole visible list starting
+/// at that row.
 public struct SongsListView: View {
     @Query(sort: \Track.title) private var tracks: [Track]
 
-    private let libraryRootPath: String
+    private let coordinator: LibraryCoordinator
 
-    public init(libraryRootPath: String) {
-        self.libraryRootPath = libraryRootPath
+    public init(coordinator: LibraryCoordinator) {
+        self.coordinator = coordinator
     }
 
     public var body: some View {
@@ -20,11 +23,20 @@ public struct SongsListView: View {
                 ContentUnavailableView(
                     "No Music Yet",
                     systemImage: "music.note",
-                    description: Text("Drop MP3s into\n\(libraryRootPath)")
+                    description: Text("Drop MP3s into\n\(coordinator.libraryRoot.path)")
                 )
             } else {
-                List(tracks) { track in
-                    SongRow(track: track)
+                List {
+                    ForEach(Array(tracks.enumerated()), id: \.element.persistentModelID) { index, track in
+                        SongRow(
+                            track: track,
+                            isCurrent: coordinator.player.current?.relativePath == track.relativePath
+                        )
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            coordinator.player.play(coordinator.playableTracks(from: tracks), startingAt: index)
+                        }
+                    }
                 }
                 .listStyle(.plain)
             }
@@ -34,6 +46,7 @@ public struct SongsListView: View {
 
 private struct SongRow: View {
     let track: Track
+    let isCurrent: Bool
 
     var body: some View {
         HStack(spacing: 12) {
@@ -50,7 +63,12 @@ private struct SongRow: View {
 
             Spacer()
 
-            DurationText(track.duration)
+            if isCurrent {
+                Image(systemName: "speaker.wave.2.fill")
+                    .foregroundStyle(.tint)
+            } else {
+                DurationText(track.duration)
+            }
         }
     }
 }
