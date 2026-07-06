@@ -1,4 +1,5 @@
 import AppFeatures
+import CloudFiles
 import DesignSystem
 import Domain
 import Foundation
@@ -23,6 +24,7 @@ struct SongRow: Identifiable, Equatable {
     let trackNumber: Int
     let artworkID: String?
     let relativePath: String
+    let isDownloaded: Bool
 
     @MainActor
     init(track: Track) {
@@ -35,6 +37,7 @@ struct SongRow: Identifiable, Equatable {
         trackNumber = track.trackNumber ?? Int.max
         artworkID = track.artworkID
         relativePath = track.relativePath
+        isDownloaded = track.isDownloaded
     }
 }
 
@@ -100,10 +103,16 @@ struct SongsTableView: View {
             TableColumn("Artist", value: \.artist)
             TableColumn("Album", value: \.album)
             TableColumn("Time", value: \.duration) { row in
-                Text(DurationText.format(row.duration))
-                    .font(OldPodTypography.timeReadout())
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
+                if row.isDownloaded {
+                    Text(DurationText.format(row.duration))
+                        .font(OldPodTypography.timeReadout())
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                } else {
+                    Image(systemName: "icloud.and.arrow.down")
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                }
             }
             .width(min: 46, ideal: 60, max: 90)
         }
@@ -158,7 +167,17 @@ struct SongsTableView: View {
         let orderedIDs = visibleRows.map(\.id)
         guard let clickedID = ids.first, let index = orderedIDs.firstIndex(of: clickedID) else { return }
         let allTracks = LibraryGroups.tracks(for: orderedIDs, in: modelContext)
+        requestDownloadIfNeeded(for: allTracks)
         coordinator.player.play(coordinator.playableTracks(from: allTracks), startingAt: index)
+    }
+
+    /// Kicks off downloading any not-yet-downloaded track's real bytes so a
+    /// later play attempt (this one will still fail-skip past it) succeeds.
+    private func requestDownloadIfNeeded(for tracks: [Track]) {
+        for track in tracks where !track.isDownloaded {
+            let url = coordinator.libraryRoot.appendingPathComponent(track.relativePath)
+            DownloadRequester.requestDownload(of: url)
+        }
     }
 
     /// Context menu "Play": play just the selected row(s), in visible order.

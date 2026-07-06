@@ -23,14 +23,9 @@ public final class LocalFolderWatcher: LibraryFolderWatching, Sendable {
 /// All mutable watcher state lives on this actor so the watcher is safe to
 /// use from any isolation domain.
 private actor WatcherEngine {
-    private struct FileStat: Equatable {
-        let size: Int64
-        let modified: Date
-    }
-
     private let root: URL
     private let fileManager = FileManager.default
-    private var snapshot: [String: FileStat] = [:]
+    private var snapshot: [String: LibraryFileStat] = [:]
     private var directorySources: [URL: DispatchSourceFileSystemObject] = [:]
     private var continuation: AsyncStream<[LibraryChange]>.Continuation?
     private var debounceTask: Task<Void, Never>?
@@ -77,47 +72,26 @@ private actor WatcherEngine {
 
     private func performInitialScan() {
         let current = scanFiles()
+        let changes = LibrarySnapshotDiff.changes(from: [:], to: current, resolveURL: url(for:))
         snapshot = current
-        let upserts = current.map { path, stat in
-            LibraryChange.upsert(libraryFile(path: path, stat: stat))
-        }
-        continuation?.yield(upserts)
+        continuation?.yield(changes)
     }
 
     private func rescanAndDiff() {
         let current = scanFiles()
-        var changes: [LibraryChange] = []
-
-        for (path, stat) in current {
-            if let previous = snapshot[path] {
-                if previous != stat {
-                    changes.append(.upsert(libraryFile(path: path, stat: stat)))
-                }
-            } else {
-                changes.append(.upsert(libraryFile(path: path, stat: stat)))
-            }
-        }
-        for path in snapshot.keys where current[path] == nil {
-            changes.append(.remove(relativePath: path))
-        }
-
+        let changes = LibrarySnapshotDiff.changes(from: snapshot, to: current, resolveURL: url(for:))
         snapshot = current
         if !changes.isEmpty {
             continuation?.yield(changes)
         }
     }
 
-    private func libraryFile(path: String, stat: FileStat) -> LibraryFile {
-        LibraryFile(
-            relativePath: path,
-            url: root.appendingPathComponent(path),
-            size: stat.size,
-            modified: stat.modified
-        )
+    private func url(for path: String) -> URL {
+        root.appendingPathComponent(path)
     }
 
-    private func scanFiles() -> [String: FileStat] {
-        var result: [String: FileStat] = [:]
+    private func scanFiles() -> [String: LibraryFileStat] {
+        var result: [String: LibraryFileStat] = [:]
         guard let enumerator = fileManager.enumerator(
             at: root,
             includingPropertiesForKeys: [.isDirectoryKey, .fileSizeKey, .contentModificationDateKey],
@@ -132,9 +106,10 @@ private actor WatcherEngine {
             guard url.pathExtension.lowercased() == "mp3" else { continue }
 
             let path = relativePath(for: url)
-            let stat = FileStat(
+            let stat = LibraryFileStat(
                 size: Int64(values.fileSize ?? 0),
-                modified: values.contentModificationDate ?? Date(timeIntervalSince1970: 0)
+                modified: values.contentModificationDate ?? Date(timeIntervalSince1970: 0),
+                isDownloaded: true
             )
             result[path] = stat
         }

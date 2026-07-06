@@ -23,6 +23,10 @@ public final class Track {
     /// Key into `ArtworkStore`.
     public var artworkID: String?
     public var addedAt: Date
+    /// `false` for an iCloud placeholder not yet downloaded to this device.
+    /// Additive field (M5): existing stores migrate in with every row
+    /// defaulting to `true`, matching the pre-M5 local-only behavior.
+    public var isDownloaded: Bool = true
 
     public init(
         relativePath: String,

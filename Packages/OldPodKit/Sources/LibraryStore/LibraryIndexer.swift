@@ -40,14 +40,23 @@ public actor LibraryIndexer {
         let descriptor = FetchDescriptor<Track>(predicate: #Predicate { $0.relativePath == path })
         let existing = try? modelContext.fetch(descriptor).first
 
-        if let existing, existing.fileModified == file.modified, existing.fileSize == file.size {
+        if let existing,
+           existing.fileModified == file.modified,
+           existing.fileSize == file.size,
+           existing.isDownloaded == file.isDownloaded
+        {
             return
         }
 
-        let metadata = try? await MetadataReader.read(from: file.url)
         let filenameStem = (file.relativePath as NSString)
             .lastPathComponent as NSString
         let fallbackTitle = filenameStem.deletingPathExtension
+
+        // Never force a download by reading it: an iCloud placeholder that
+        // hasn't downloaded yet is indexed by filename alone, and picks up
+        // its real metadata once `apply` sees it again with `isDownloaded`
+        // flipped to `true`.
+        let metadata = file.isDownloaded ? try? await MetadataReader.read(from: file.url) : nil
 
         var artworkID: String?
         if let data = metadata?.artwork {
@@ -72,6 +81,7 @@ public actor LibraryIndexer {
             existing.fileSize = file.size
             existing.fileModified = file.modified
             existing.artworkID = artworkID
+            existing.isDownloaded = file.isDownloaded
             // addedAt is preserved.
         } else {
             let track = Track(
@@ -89,6 +99,7 @@ public actor LibraryIndexer {
                 fileModified: file.modified,
                 artworkID: artworkID
             )
+            track.isDownloaded = file.isDownloaded
             modelContext.insert(track)
         }
     }

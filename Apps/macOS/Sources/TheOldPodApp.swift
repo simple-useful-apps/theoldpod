@@ -3,17 +3,24 @@ import SwiftUI
 
 @main
 struct TheOldPodApp: App {
-    @State private var coordinator = try? LibraryCoordinator()
+    @State private var coordinator: LibraryCoordinator?
+    @State private var hasFinishedLoading = false
 
     var body: some Scene {
         Window("theoldpod", id: "main") {
             if let coordinator {
                 MacRootView(coordinator: coordinator)
                     .modelContainer(coordinator.container)
-            } else {
+            } else if hasFinishedLoading {
                 Text("theoldpod couldn't set up its library folder.")
                     .foregroundStyle(.secondary)
                     .padding()
+            } else {
+                ProgressView()
+                    .task {
+                        coordinator = await LibraryCoordinator.make()
+                        hasFinishedLoading = true
+                    }
             }
         }
         .defaultSize(width: 1000, height: 640)
@@ -30,9 +37,7 @@ struct TheOldPodApp: App {
             if let coordinator {
                 NowPlayingView(player: coordinator.player, artworkDirectory: coordinator.artworkDirectory)
             } else {
-                Text("theoldpod couldn't set up its library folder.")
-                    .foregroundStyle(.secondary)
-                    .padding()
+                ProgressView()
             }
         }
         .defaultSize(width: 340, height: 480)

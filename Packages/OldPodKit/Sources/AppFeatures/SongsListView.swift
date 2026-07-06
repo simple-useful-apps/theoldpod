@@ -57,6 +57,9 @@ public struct SongsListView: View {
                         )
                         .contentShape(Rectangle())
                         .onTapGesture {
+                            if !track.isDownloaded {
+                                DownloadRequester.requestDownload(of: resolvedURL(for: track))
+                            }
                             coordinator.player.play(coordinator.playableTracks(from: filteredTracks), startingAt: index)
                         }
                         .contextMenu {
@@ -143,6 +146,10 @@ public struct SongsListView: View {
         }
     }
 
+    private func resolvedURL(for track: Track) -> URL {
+        coordinator.libraryRoot.appendingPathComponent(track.relativePath)
+    }
+
     private static func matches(_ track: Track, query: String) -> Bool {
         let needle = Self.fold(query)
         return Self.fold(track.title).contains(needle)
@@ -178,6 +185,9 @@ private struct SongRow: View {
             if isCurrent {
                 Image(systemName: "speaker.wave.2.fill")
                     .foregroundStyle(.tint)
+            } else if !track.isDownloaded {
+                Image(systemName: "icloud.and.arrow.down")
+                    .foregroundStyle(.secondary)
             } else {
                 DurationText(track.duration)
             }

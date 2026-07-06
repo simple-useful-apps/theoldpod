@@ -17,6 +17,7 @@ import SwiftData
 public final class LibraryCoordinator {
     public let container: ModelContainer
     public let libraryRoot: URL
+    public let isCloudLibrary: Bool
     public let player: PlayerController
     public let nowPlaying: NowPlayingBridge
 
@@ -33,6 +34,8 @@ public final class LibraryCoordinator {
     /// Default stack: `LibraryContainerFactory`'s default container, an
     /// `ArtworkStore` at `<App Support>/theoldpod/Artwork`, and a
     /// `LocalFolderWatcher` rooted at `LibraryLocation.defaultRoot()`.
+    /// Always local — `make()` is the entry point that resolves an
+    /// iCloud-backed library when one's available.
     public init() throws {
         let root = try LibraryLocation.defaultRoot()
         container = try LibraryContainerFactory.make(storeURL: nil)
@@ -40,6 +43,7 @@ public final class LibraryCoordinator {
         artwork = try ArtworkStore(directory: artworkDirectory)
         watcher = LocalFolderWatcher(root: root)
         libraryRoot = root
+        isCloudLibrary = false
         let player = PlayerController()
         self.player = player
         nowPlaying = NowPlayingBridge(player: player, artworkDirectory: artworkDirectory)
@@ -50,15 +54,44 @@ public final class LibraryCoordinator {
         container: ModelContainer,
         watcher: any LibraryFolderWatching,
         artwork: ArtworkStore,
-        libraryRoot: URL
+        libraryRoot: URL,
+        isCloudLibrary: Bool = false
     ) {
         self.container = container
         self.watcher = watcher
         self.artwork = artwork
         self.libraryRoot = libraryRoot
+        self.isCloudLibrary = isCloudLibrary
         let player = PlayerController()
         self.player = player
         nowPlaying = NowPlayingBridge(player: player, artworkDirectory: artwork.directory)
+    }
+
+    /// Resolves the library location (cloud if available, else the local
+    /// fallback — see `LibraryLocation.resolve()`) and builds the full
+    /// coordinator stack around it. `nil` only if setting up the model
+    /// container or artwork store throws, which local-only `init()` would
+    /// also fail on.
+    @MainActor
+    public static func make() async -> LibraryCoordinator? {
+        let resolved = await LibraryLocation.resolve()
+        do {
+            let container = try LibraryContainerFactory.make(storeURL: nil)
+            let artworkDirectory = try defaultArtworkDirectory()
+            let artwork = try ArtworkStore(directory: artworkDirectory)
+            let watcher: any LibraryFolderWatching = resolved.isCloud
+                ? UbiquityLibraryWatcher(containerDocumentsMusicURL: resolved.root)
+                : LocalFolderWatcher(root: resolved.root)
+            return LibraryCoordinator(
+                container: container,
+                watcher: watcher,
+                artwork: artwork,
+                libraryRoot: resolved.root,
+                isCloudLibrary: resolved.isCloud
+            )
+        } catch {
+            return nil
+        }
     }
 
     /// Idempotent: starts a task consuming `watcher.changes()` into the
