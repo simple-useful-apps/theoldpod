@@ -27,5 +27,5 @@ Known items deliberately deferred from v1, mostly surfaced by the M6 full-codeba
 
 ## Product (post-v1, per GOAL.md non-goals)
 
-- App icon (both platforms currently ship the placeholder). A considered custom accent blue (M6 note in design-language skill).
+- A considered custom accent blue (M6 note in design-language skill) — could derive from the icon's #3E5F9C now that it exists.
 - Queue screen ("Up Next"), smart playlists, EQ, gapless refinement, CarPlay — explicitly out of v1 scope.

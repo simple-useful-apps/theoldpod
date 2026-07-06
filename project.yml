@@ -31,6 +31,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.mattreed.theoldpod
         PRODUCT_NAME: TheOldPod
         TARGETED_DEVICE_FAMILY: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     info:
       path: Apps/iOS/Info.plist
       properties:
@@ -72,6 +73,7 @@ targets:
         # Real signing (DEVELOPMENT_TEAM) arrives with iCloud entitlements in M5.
         CODE_SIGN_IDENTITY: "-"
         ENABLE_HARDENED_RUNTIME: false
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     info:
       path: Apps/macOS/Info.plist
       properties:
