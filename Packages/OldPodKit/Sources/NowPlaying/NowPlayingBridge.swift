@@ -1,4 +1,5 @@
 import Foundation
+import ImageIO
 import MediaPlayer
 import PlaybackEngine
 
@@ -133,17 +134,26 @@ public final class NowPlayingBridge {
         }
 
         let url = artworkDirectory.appendingPathComponent("\(artworkID).img")
-        guard let data = try? Data(contentsOf: url) else { return nil }
+        guard let data = try? Data(contentsOf: url),
+              let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil)
+        else { return nil }
 
-        #if canImport(UIKit)
-            guard let image = UIImage(data: data) else { return nil }
-            let mediaArtwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
-        #elseif canImport(AppKit)
-            guard let image = NSImage(data: data) else { return nil }
-            let mediaArtwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
-        #else
-            return nil
-        #endif
+        let size = CGSize(width: cgImage.width, height: cgImage.height)
+        // MediaPlayer invokes this handler on its own private dispatch queue.
+        // A plain closure formed here would inherit this class's @MainActor
+        // isolation and Swift 6's runtime isolation check would trap
+        // (dispatch_assert_queue_fail → SIGTRAP) the moment now-playing info
+        // is pushed for a track with artwork. It must be @Sendable
+        // (nonisolated) and capture only Sendable values — CGImage is
+        // immutable; the platform image is wrapped per invocation.
+        let mediaArtwork = MPMediaItemArtwork(boundsSize: size) { @Sendable _ in
+            #if canImport(UIKit)
+                UIImage(cgImage: cgImage)
+            #else
+                NSImage(cgImage: cgImage, size: size)
+            #endif
+        }
 
         cachedArtwork = (artworkID, mediaArtwork)
         return mediaArtwork
