@@ -29,6 +29,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.mattreed.theoldpod
+        PRODUCT_NAME: TheOldPod
         TARGETED_DEVICE_FAMILY: "1"
     info:
       path: Apps/iOS/Info.plist
@@ -57,6 +58,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.mattreed.theoldpod.mac
+        PRODUCT_NAME: TheOldPod
         # Ad-hoc signing so unsigned dev builds run locally with the sandbox.
         # Real signing (DEVELOPMENT_TEAM) arrives with iCloud entitlements in M5.
         CODE_SIGN_IDENTITY: "-"
