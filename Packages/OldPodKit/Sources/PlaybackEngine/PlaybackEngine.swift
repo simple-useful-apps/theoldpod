@@ -1,3 +1,3 @@
-/// @MainActor PlayerController wrapping AVQueuePlayer; the app-owned queue
-/// (shuffle/repeat) lives here. Populated in M2.
+/// Playback: the pure PlayQueue value type (order, shuffle, repeat) and the
+/// @MainActor PlayerController that drives AVQueuePlayer from it.
 public enum PlaybackEngineModule {}

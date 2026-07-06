@@ -6,13 +6,11 @@ import SwiftData
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// M1 minimal songs list: every `Track` in the library, sorted by title, with
-/// no grouping — the tabbed Artists/Albums/Playlists UI lands in M3.
-/// M2 adds tap-to-play: tapping a row plays the whole visible list starting
-/// at that row. M3 adds a live, diacritic/case-insensitive search over
-/// title/artist/album via `.searchable`. M4 adds a per-row "Add to
-/// Playlist…" menu and a toolbar import button for picking `.mp3` files
-/// into the library folder.
+/// The Songs tab: every `Track` in the library, sorted by title, with live
+/// case/diacritic-insensitive search over title/artist/album. Tapping a row
+/// plays the whole visible list starting at that row; long-press offers
+/// Play Next / Add to Queue / Add to Playlist; the toolbar button imports
+/// `.mp3` files into the library folder.
 public struct SongsListView: View {
     @Query(sort: \Track.title) private var tracks: [Track]
     @State private var searchText = ""
@@ -33,7 +31,8 @@ public struct SongsListView: View {
     /// album — case and diacritic insensitive. Empty query means "no filter."
     private var filteredTracks: [Track] {
         guard !searchText.isEmpty else { return tracks }
-        return tracks.filter { Self.matches($0, query: searchText) }
+        let needle = Self.fold(searchText) // fold once, not per track
+        return tracks.filter { Self.matches($0, needle: needle) }
     }
 
     public var body: some View {
@@ -147,9 +146,8 @@ public struct SongsListView: View {
         }
     }
 
-    private static func matches(_ track: Track, query: String) -> Bool {
-        let needle = Self.fold(query)
-        return Self.fold(track.title).contains(needle)
+    private static func matches(_ track: Track, needle: String) -> Bool {
+        Self.fold(track.title).contains(needle)
             || Self.fold(track.artist).contains(needle)
             || Self.fold(track.album).contains(needle)
     }

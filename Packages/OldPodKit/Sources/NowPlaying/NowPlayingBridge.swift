@@ -32,6 +32,8 @@ public final class NowPlayingBridge {
         pushNowPlayingInfo()
     }
 
+    /// No production caller today — the bridge lives for the whole process.
+    /// Kept as the symmetric teardown for tests and any future lifecycle.
     public func deactivate() {
         guard isActive else { return }
         isActive = false

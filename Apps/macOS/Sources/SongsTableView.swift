@@ -10,7 +10,7 @@ import SwiftUI
 /// Tables want `Identifiable` value types, not `@Model` reference types, so
 /// only the `PersistentIdentifier` crosses back to `Track` (via
 /// `LibraryGroups.tracks(for:in:)`) when an action needs the real model.
-struct SongRow: Identifiable, Equatable {
+struct SongTableRow: Identifiable, Equatable {
     let id: PersistentIdentifier
     let title: String
     let artist: String
@@ -52,14 +52,14 @@ struct SongsTableView: View {
     private let coordinator: LibraryCoordinator
     private let filter: (Track) -> Bool
 
-    @State private var sortOrder: [KeyPathComparator<SongRow>]
+    @State private var sortOrder: [KeyPathComparator<SongTableRow>]
     @State private var searchText = ""
     @State private var selection: Set<PersistentIdentifier> = []
 
     init(
         coordinator: LibraryCoordinator,
         filter: @escaping (Track) -> Bool = { _ in true },
-        initialSortOrder: [KeyPathComparator<SongRow>] = [KeyPathComparator(\.title, order: .forward)]
+        initialSortOrder: [KeyPathComparator<SongTableRow>] = [KeyPathComparator(\.title, order: .forward)]
     ) {
         self.coordinator = coordinator
         self.filter = filter
@@ -86,7 +86,7 @@ struct SongsTableView: View {
         .searchable(text: $searchText, prompt: "Search")
     }
 
-    private func table(for rows: [SongRow]) -> some View {
+    private func table(for rows: [SongTableRow]) -> some View {
         Table(rows, selection: $selection, sortOrder: $sortOrder) {
             TableColumn("Title", value: \.title) { row in
                 HStack(spacing: 6) {
@@ -137,8 +137,8 @@ struct SongsTableView: View {
     /// `tracks` (already narrowed by `filter`) turned into rows, then further
     /// narrowed by the search field, then sorted — this is "the current
     /// visible row order" that double-click and the context menu play from.
-    private var visibleRows: [SongRow] {
-        var rows = tracks.filter(filter).map(SongRow.init(track:))
+    private var visibleRows: [SongTableRow] {
+        var rows = tracks.filter(filter).map(SongTableRow.init(track:))
         if !searchText.isEmpty {
             rows = rows.filter {
                 $0.title.localizedCaseInsensitiveContains(searchText) ||
@@ -150,7 +150,7 @@ struct SongsTableView: View {
         return rows
     }
 
-    private func isCurrent(_ row: SongRow) -> Bool {
+    private func isCurrent(_ row: SongTableRow) -> Bool {
         coordinator.player.current?.relativePath == row.relativePath
     }
 

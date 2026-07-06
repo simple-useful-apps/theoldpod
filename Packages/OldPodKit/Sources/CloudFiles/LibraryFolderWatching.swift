@@ -1,6 +1,7 @@
 /// Watches a library folder for MP3 files appearing, changing, or disappearing.
-/// Abstracted so M5 can swap in an NSMetadataQuery-backed iCloud implementation
-/// without touching callers.
+/// Two implementations exist: LocalFolderWatcher (DispatchSource over a local
+/// directory) and UbiquityLibraryWatcher (NSMetadataQuery over the iCloud
+/// container); the indexer consumes either through this one protocol.
 public protocol LibraryFolderWatching: Sendable {
     /// First emission is the full current snapshot as upserts (empty array if
     /// folder empty). Subsequent emissions are diffs.

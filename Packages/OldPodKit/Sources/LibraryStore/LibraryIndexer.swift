@@ -2,6 +2,7 @@ import CloudFiles
 import Domain
 import Foundation
 import MetadataImport
+import os
 import SwiftData
 
 /// Turns file-system diffs from a `LibraryFolderWatching` into `Track` rows.
@@ -14,6 +15,8 @@ import SwiftData
 /// public initializer below sets up the macro's storage by hand alongside it.
 @ModelActor
 public actor LibraryIndexer {
+    private static let logger = Logger(subsystem: "OldPodKit.LibraryStore", category: "LibraryIndexer")
+
     private var artwork: ArtworkStore?
 
     public init(modelContainer: ModelContainer, artwork: ArtworkStore) {
@@ -32,7 +35,14 @@ public actor LibraryIndexer {
                 remove(relativePath: relativePath)
             }
         }
-        try? modelContext.save()
+        do {
+            try modelContext.save()
+        } catch {
+            // Same policy as PlaylistOps: never crash on a failed save, but
+            // leave a trail — a silently dropped batch looks like "my music
+            // didn't import" with nothing to diagnose.
+            Self.logger.error("Failed to save library index batch: \(error)")
+        }
     }
 
     private func upsert(_ file: LibraryFile) async {

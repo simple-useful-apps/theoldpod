@@ -180,13 +180,11 @@ public final class PlayerController {
     public func append(_ track: PlayableTrack) {
         let hadCurrent = queue.current != nil
         queue.append(track)
-        if !hadCurrent {
-            syncPlayerItems(fullRebuild: true)
-        } else {
-            syncPlayerItems(fullRebuild: false)
-        }
+        syncPlayerItems(fullRebuild: !hadCurrent)
     }
 
+    /// No UI exposes stop today (pause is the product's idle state); this
+    /// exists for tests and completeness.
     public func stop() {
         player.pause()
         isPlaying = false

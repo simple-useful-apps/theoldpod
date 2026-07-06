@@ -230,11 +230,11 @@ private struct ArtistsDetailView: View {
     @Query private var tracks: [Track]
     @State private var selectedArtistID: String?
 
-    private var artists: [ArtistGroup] {
-        LibraryGroups.artists(from: tracks)
-    }
-
     var body: some View {
+        // Grouped once per body evaluation — reading a computed property from
+        // the empty-check, the List, AND the filter would regroup the whole
+        // library three times per render.
+        let artists = LibraryGroups.artists(from: tracks)
         HSplitView {
             Group {
                 if artists.isEmpty {
@@ -259,14 +259,14 @@ private struct ArtistsDetailView: View {
             }
             .frame(minWidth: 200, idealWidth: 220, maxWidth: 320)
 
-            SongsTableView(coordinator: coordinator, filter: filter)
+            SongsTableView(coordinator: coordinator, filter: filter(artists: artists))
                 .frame(minWidth: 400)
         }
     }
 
     /// nil selection = all tracks; otherwise every track belonging to any of
     /// the selected artist's albums.
-    private var filter: (Track) -> Bool {
+    private func filter(artists: [ArtistGroup]) -> (Track) -> Bool {
         guard let selectedArtistID, let group = artists.first(where: { $0.id == selectedArtistID }) else {
             return { _ in true }
         }
@@ -283,11 +283,9 @@ private struct AlbumsDetailView: View {
     @Query private var tracks: [Track]
     @State private var selectedAlbumID: String?
 
-    private var albums: [AlbumGroup] {
-        LibraryGroups.albums(from: tracks)
-    }
-
     var body: some View {
+        // Grouped once per body evaluation (see ArtistsDetailView).
+        let albums = LibraryGroups.albums(from: tracks)
         HSplitView {
             Group {
                 if albums.isEmpty {
@@ -320,7 +318,7 @@ private struct AlbumsDetailView: View {
 
             SongsTableView(
                 coordinator: coordinator,
-                filter: filter,
+                filter: filter(albums: albums),
                 initialSortOrder: [
                     KeyPathComparator(\.discNumber, order: .forward),
                     KeyPathComparator(\.trackNumber, order: .forward),
@@ -331,7 +329,7 @@ private struct AlbumsDetailView: View {
     }
 
     /// nil selection = all tracks; otherwise just the selected album's tracks.
-    private var filter: (Track) -> Bool {
+    private func filter(albums: [AlbumGroup]) -> (Track) -> Bool {
         guard let selectedAlbumID, let group = albums.first(where: { $0.id == selectedAlbumID }) else {
             return { _ in true }
         }

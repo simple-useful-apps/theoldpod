@@ -2,10 +2,10 @@ import DesignSystem
 import PlaybackEngine
 import SwiftUI
 
-/// The persistent "what's playing" surface — always visible per the design
-/// language, on every screen. M2 is transport-only (artwork, title/artist,
-/// previous/play-pause/next); the full Now Playing screen and scrubber arrive
-/// in M3.
+/// The iPhone's persistent "what's playing" surface — mounted as the tab
+/// view's bottom accessory on every screen: artwork, title/artist, and
+/// previous/play-pause/next transport. Tapping it opens NowPlayingView as a
+/// sheet (wired in RootTabView).
 public struct MiniPlayerBar: View {
     private let player: PlayerController
     private let artworkDirectory: URL?

@@ -66,8 +66,8 @@ private struct LibraryCommands: Commands {
 }
 
 /// Mac menu-bar transport: Space to play/pause, arrow-key skip, shuffle/repeat
-/// toggles. M2 is menu-only — the mini-player window and full Now Playing
-/// screen arrive in M3.
+/// toggles. These drive the same PlayerController as the window's player bar
+/// and the Mini Player window.
 private struct PlaybackCommands: Commands {
     let coordinator: LibraryCoordinator
 

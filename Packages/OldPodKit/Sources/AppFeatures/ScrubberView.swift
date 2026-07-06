@@ -3,8 +3,8 @@ import PlaybackEngine
 import SwiftUI
 
 /// A shared playback scrubber: a slider tracking `player.currentTime` with
-/// elapsed/remaining time readouts, usable from both the Now Playing surface
-/// and, later, the Mac mini-player window.
+/// elapsed/remaining time readouts. Used by NowPlayingView (both platforms)
+/// and the Mac window's top player bar.
 public struct ScrubberView: View {
     private let player: PlayerController
 

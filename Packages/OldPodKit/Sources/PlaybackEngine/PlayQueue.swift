@@ -229,6 +229,8 @@ public struct PlayQueue: Sendable, Equatable {
 
     /// Bounds-checked jump to an arbitrary index; leaves state untouched and
     /// returns nil if `index` is out of range.
+    /// Not yet wired to any UI — reserved for the future "Up Next" queue
+    /// screen (see docs/BACKLOG.md).
     public mutating func jump(to index: Int) -> PlayableTrack? {
         guard items.indices.contains(index) else { return nil }
         currentIndex = index

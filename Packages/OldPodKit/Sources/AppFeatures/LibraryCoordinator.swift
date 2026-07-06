@@ -99,6 +99,9 @@ public final class LibraryCoordinator {
         tracks.map { PlayableTrack(track: $0, libraryRoot: libraryRoot) }
     }
 
+    /// No production caller today — the coordinator lives for the whole
+    /// process. Kept as the symmetric teardown for tests and any future
+    /// library-root switching.
     public func stop() {
         watcher.stop()
         watchTask?.cancel()
