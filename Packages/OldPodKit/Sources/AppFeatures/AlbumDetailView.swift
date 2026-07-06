@@ -82,8 +82,13 @@ public struct AlbumDetailView: View {
         }
 
         Button {
-            trackPendingPlaylistAdd = track
-            isPresentingAddToPlaylist = true
+            // Deferred one runloop tick: mutating sheet state synchronously
+            // inside a context-menu action races the menu's own dismissal
+            // transaction and the presentation is silently dropped.
+            Task { @MainActor in
+                trackPendingPlaylistAdd = track
+                isPresentingAddToPlaylist = true
+            }
         } label: {
             Label("Add to Playlist…", systemImage: "music.note.list")
         }
@@ -115,6 +120,10 @@ public struct AlbumDetailView: View {
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
+                // Distinct from the always-present (if disabled) mini-player
+                // transport button, which shares the "Play" label whenever
+                // nothing is queued yet.
+                .accessibilityIdentifier("albumPlayButton")
 
                 Button {
                     shuffle(tracks: tracks)
@@ -123,6 +132,7 @@ public struct AlbumDetailView: View {
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
+                .accessibilityIdentifier("albumShuffleButton")
             }
         }
         .frame(maxWidth: .infinity)

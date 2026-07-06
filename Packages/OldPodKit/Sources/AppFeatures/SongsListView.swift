@@ -136,8 +136,13 @@ public struct SongsListView: View {
         }
 
         Button {
-            trackPendingPlaylistAdd = track
-            isPresentingAddToPlaylist = true
+            // Deferred one runloop tick: mutating sheet state synchronously
+            // inside a context-menu action races the menu's own dismissal
+            // transaction and the presentation is silently dropped.
+            Task { @MainActor in
+                trackPendingPlaylistAdd = track
+                isPresentingAddToPlaylist = true
+            }
         } label: {
             Label("Add to Playlist…", systemImage: "music.note.list")
         }
