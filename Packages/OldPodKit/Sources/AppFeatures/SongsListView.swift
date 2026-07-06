@@ -30,7 +30,8 @@ public struct SongsListView: View {
                     ForEach(Array(tracks.enumerated()), id: \.element.persistentModelID) { index, track in
                         SongRow(
                             track: track,
-                            isCurrent: coordinator.player.current?.relativePath == track.relativePath
+                            isCurrent: coordinator.player.current?.relativePath == track.relativePath,
+                            artworkDirectory: coordinator.artworkDirectory
                         )
                         .contentShape(Rectangle())
                         .onTapGesture {
@@ -47,10 +48,11 @@ public struct SongsListView: View {
 private struct SongRow: View {
     let track: Track
     let isCurrent: Bool
+    let artworkDirectory: URL?
 
     var body: some View {
         HStack(spacing: 12) {
-            ArtworkPlaceholder()
+            ArtworkImage(artworkID: track.artworkID, directory: artworkDirectory)
                 .frame(width: 44, height: 44)
 
             VStack(alignment: .leading, spacing: 2) {

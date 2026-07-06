@@ -8,9 +8,11 @@ import SwiftUI
 /// in M3.
 public struct MiniPlayerBar: View {
     private let player: PlayerController
+    private let artworkDirectory: URL?
 
-    public init(player: PlayerController) {
+    public init(player: PlayerController, artworkDirectory: URL? = nil) {
         self.player = player
+        self.artworkDirectory = artworkDirectory
     }
 
     public var body: some View {
@@ -20,7 +22,7 @@ public struct MiniPlayerBar: View {
                 .frame(height: 0.5)
 
             HStack(spacing: 12) {
-                ArtworkPlaceholder()
+                ArtworkImage(artworkID: player.current?.artworkID, directory: artworkDirectory)
                     .frame(width: 40, height: 40)
 
                 if let current = player.current {
