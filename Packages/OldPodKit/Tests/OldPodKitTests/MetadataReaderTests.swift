@@ -12,6 +12,16 @@ struct MetadataReaderTests {
         #expect(abs(metadata.duration - 3) < 0.5)
     }
 
+    @Test func readsVBRTaggedFixtureFully() async throws {
+        let metadata = try await MetadataReader.read(from: TestFixtures.url("vbr-tagged.mp3"))
+        #expect(metadata.title == "Fixture Two")
+        #expect(metadata.artist == "The Fixtures")
+        #expect(metadata.album == "Test Tones")
+        #expect(metadata.trackNumber == 2)
+        #expect(metadata.year == 2001)
+        #expect(abs(metadata.duration - 3) < 0.5)
+    }
+
     @Test func readsArtworkFromTaggedFixture() async throws {
         let metadata = try await MetadataReader.read(from: TestFixtures.url("art-tagged.mp3"))
         #expect(metadata.artwork != nil)
