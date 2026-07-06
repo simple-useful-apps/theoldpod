@@ -1,4 +1,3 @@
-/// Library folder location (iCloud ubiquity container with local-Documents fallback),
-/// NSMetadataQuery file watching, and download-state helpers. Local scanning arrives
-/// in M1; iCloud in M5.
-public enum CloudFilesModule {}
+// Library folder location (iCloud ubiquity container with local-Documents fallback),
+// file-system watching, and download-state helpers. Local scanning lands here;
+// iCloud support arrives in M5.
