@@ -22,7 +22,6 @@ public struct SongsListView: View {
     @State private var importSkippedCount: Int?
 
     @State private var trackPendingPlaylistAdd: Track?
-    @State private var isPresentingAddToPlaylist = false
 
     private let coordinator: LibraryCoordinator
 
@@ -110,10 +109,12 @@ public struct SongsListView: View {
                 Text("\(importSkippedCount) file\(importSkippedCount == 1 ? "" : "s") couldn't be imported.")
             }
         }
-        .sheet(isPresented: $isPresentingAddToPlaylist) {
-            if let trackPendingPlaylistAdd {
-                AddToPlaylistSheet(track: trackPendingPlaylistAdd)
-            }
+        // item-driven, NOT isPresented + separate optional: the Bool variant
+        // can evaluate its content closure before the payload write is
+        // visible, presenting an empty sheet (classic SwiftUI gotcha, found
+        // by UI testing).
+        .sheet(item: $trackPendingPlaylistAdd) { track in
+            AddToPlaylistSheet(track: track)
         }
     }
 
@@ -136,12 +137,10 @@ public struct SongsListView: View {
         }
 
         Button {
-            // Deferred one runloop tick: mutating sheet state synchronously
-            // inside a context-menu action races the menu's own dismissal
-            // transaction and the presentation is silently dropped.
+            // Deferred one runloop tick so the context menu's dismissal
+            // transaction completes before the sheet presentation begins.
             Task { @MainActor in
                 trackPendingPlaylistAdd = track
-                isPresentingAddToPlaylist = true
             }
         } label: {
             Label("Add to Playlist…", systemImage: "music.note.list")

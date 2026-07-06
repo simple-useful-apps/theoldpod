@@ -14,7 +14,6 @@ public struct AlbumDetailView: View {
     @Environment(\.modelContext) private var modelContext
 
     @State private var trackPendingPlaylistAdd: Track?
-    @State private var isPresentingAddToPlaylist = false
 
     public init(album: AlbumGroup, coordinator: LibraryCoordinator) {
         self.album = album
@@ -56,10 +55,12 @@ public struct AlbumDetailView: View {
         #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
         #endif
-            .sheet(isPresented: $isPresentingAddToPlaylist) {
-                if let trackPendingPlaylistAdd {
-                    AddToPlaylistSheet(track: trackPendingPlaylistAdd)
-                }
+            // item-driven, NOT isPresented + separate optional: the Bool
+            // variant can evaluate its content closure before the payload
+            // write is visible, presenting an empty sheet (classic SwiftUI
+            // gotcha, found by UI testing).
+            .sheet(item: $trackPendingPlaylistAdd) { track in
+                AddToPlaylistSheet(track: track)
             }
     }
 
@@ -82,12 +83,10 @@ public struct AlbumDetailView: View {
         }
 
         Button {
-            // Deferred one runloop tick: mutating sheet state synchronously
-            // inside a context-menu action races the menu's own dismissal
-            // transaction and the presentation is silently dropped.
+            // Deferred one runloop tick so the context menu's dismissal
+            // transaction completes before the sheet presentation begins.
             Task { @MainActor in
                 trackPendingPlaylistAdd = track
-                isPresentingAddToPlaylist = true
             }
         } label: {
             Label("Add to Playlist…", systemImage: "music.note.list")

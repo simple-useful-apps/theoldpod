@@ -28,6 +28,7 @@ public struct NowPlayingView: View {
                         .font(.title3.weight(.semibold))
                         .multilineTextAlignment(.center)
                         .lineLimit(2)
+                        .accessibilityIdentifier("nowPlayingTitle")
                     Text(
                         "\(current.artist.isEmpty ? "Unknown Artist" : current.artist) · " +
                             (current.album.isEmpty ? "Unknown Album" : current.album)
@@ -36,6 +37,7 @@ public struct NowPlayingView: View {
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .lineLimit(2)
+                    .accessibilityIdentifier("nowPlayingSubtitle")
                 }
                 .padding(.horizontal, 24)
 
@@ -89,12 +91,14 @@ public struct NowPlayingView: View {
                 Image(systemName: "shuffle")
             }
             .foregroundStyle(player.isShuffled ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
+            .accessibilityIdentifier("nowPlayingShuffleButton")
 
             Button {
                 player.previous()
             } label: {
                 Image(systemName: "backward.fill")
             }
+            .accessibilityIdentifier("nowPlayingPreviousButton")
 
             Button {
                 player.togglePlayPause()
@@ -102,12 +106,14 @@ public struct NowPlayingView: View {
                 Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
                     .font(.system(size: 44))
             }
+            .accessibilityIdentifier("nowPlayingPlayPauseButton")
 
             Button {
                 player.next()
             } label: {
                 Image(systemName: "forward.fill")
             }
+            .accessibilityIdentifier("nowPlayingNextButton")
 
             Button {
                 player.cycleRepeatMode()
@@ -115,6 +121,7 @@ public struct NowPlayingView: View {
                 Image(systemName: player.repeatMode == .one ? "repeat.1" : "repeat")
             }
             .foregroundStyle(player.repeatMode != .off ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
+            .accessibilityIdentifier("nowPlayingRepeatButton")
         }
         .buttonStyle(.borderless)
         .imageScale(.large)

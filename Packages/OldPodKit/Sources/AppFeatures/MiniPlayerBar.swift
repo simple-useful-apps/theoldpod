@@ -31,10 +31,12 @@ public struct MiniPlayerBar: View {
                             .font(.body)
                             .lineLimit(1)
                             .truncationMode(.tail)
+                            .accessibilityIdentifier("miniPlayerTitle")
                         Text(current.artist.isEmpty ? "Unknown Artist" : current.artist)
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
+                            .accessibilityIdentifier("miniPlayerSubtitle")
                     }
                 } else {
                     Text("Not Playing")
@@ -59,18 +61,21 @@ public struct MiniPlayerBar: View {
             } label: {
                 Image(systemName: "backward.fill")
             }
+            .accessibilityIdentifier("miniPlayerPreviousButton")
 
             Button {
                 player.togglePlayPause()
             } label: {
                 Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
             }
+            .accessibilityIdentifier("miniPlayerPlayPauseButton")
 
             Button {
                 player.next()
             } label: {
                 Image(systemName: "forward.fill")
             }
+            .accessibilityIdentifier("miniPlayerNextButton")
         }
         .buttonStyle(.borderless)
         .imageScale(.large)
