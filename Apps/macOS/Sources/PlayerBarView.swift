@@ -38,6 +38,7 @@ struct PlayerBarView: View {
             } label: {
                 Image(systemName: "backward.fill")
             }
+            .accessibilityLabel("Previous Track")
 
             Button {
                 player.togglePlayPause()
@@ -46,12 +47,14 @@ struct PlayerBarView: View {
                     .font(.system(size: 28))
                     .frame(width: 28)
             }
+            .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
 
             Button {
                 player.next()
             } label: {
                 Image(systemName: "forward.fill")
             }
+            .accessibilityLabel("Next Track")
         }
         .buttonStyle(.borderless)
         .imageScale(.large)
@@ -96,6 +99,7 @@ struct PlayerBarView: View {
             } label: {
                 Image(systemName: "shuffle")
             }
+            .accessibilityLabel("Shuffle")
             .foregroundStyle(player.isShuffled ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
 
             Button {
@@ -103,6 +107,7 @@ struct PlayerBarView: View {
             } label: {
                 Image(systemName: player.repeatMode == .one ? "repeat.1" : "repeat")
             }
+            .accessibilityLabel("Repeat")
             .foregroundStyle(player.repeatMode != .off ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
         }
         .buttonStyle(.borderless)

@@ -26,6 +26,7 @@ struct TheOldPodApp: App {
         .defaultSize(width: 1000, height: 640)
         .commands {
             if let coordinator {
+                LibraryCommands(coordinator: coordinator)
                 PlaybackCommands(coordinator: coordinator)
             }
         }
@@ -42,6 +43,25 @@ struct TheOldPodApp: App {
         }
         .defaultSize(width: 340, height: 480)
         .windowResizability(.contentSize)
+    }
+}
+
+/// Library menu. The sidebar's "+" also creates playlists, but a
+/// hover-styled header button never surfaces in the accessibility tree —
+/// this menu item (added after exploratory testing) is the discoverable,
+/// VoiceOver-reachable path. A plain `Window` scene gets no File menu from
+/// SwiftUI, so `.newItem`-anchored CommandGroups have nowhere to land; a
+/// dedicated menu it is.
+private struct LibraryCommands: Commands {
+    let coordinator: LibraryCoordinator
+
+    var body: some Commands {
+        CommandMenu("Library") {
+            Button("New Playlist") {
+                _ = PlaylistOps.create(name: "New Playlist", in: coordinator.container.mainContext)
+            }
+            .keyboardShortcut("n", modifiers: .command)
+        }
     }
 }
 

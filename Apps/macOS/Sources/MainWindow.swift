@@ -112,6 +112,7 @@ struct MacRootView: View {
                         Image(systemName: "plus")
                     }
                     .buttonStyle(.borderless)
+                    .accessibilityLabel("New Playlist")
                     .help("New Playlist")
                 }
             }

@@ -20,6 +20,9 @@ targets:
     type: application
     platform: iOS
     productName: TheOldPod
+    scheme:
+      testTargets:
+        - TheOldPod-UITests
     sources:
       - Apps/iOS/Sources
       - Apps/iOS/Resources
@@ -49,6 +52,18 @@ targets:
             NSUbiquitousContainerIsDocumentScopePublic: true
             NSUbiquitousContainerName: "The Old Pod"
             NSUbiquitousContainerSupportedFolderLevels: Any
+
+  TheOldPod-UITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - Apps/iOS/UITests
+    dependencies:
+      - target: TheOldPod-iOS
+    settings:
+      base:
+        TEST_TARGET_NAME: TheOldPod-iOS
+        PRODUCT_BUNDLE_IDENTIFIER: com.mattreed.theoldpod.uitests
 
   TheOldPod-macOS:
     type: application

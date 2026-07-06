@@ -14,6 +14,11 @@ Known items deliberately deferred from v1, mostly surfaced by the M6 full-codeba
 - **Download badge coverage** — undownloaded-track glyph shows in the Songs list and Mac table but not in album/playlist/artist rows. Extract a shared track-row trailing view.
 - **Playlists don't sync between devices** (by design in v1 — SwiftData is local-only). v2 path: export/import `.m3u8`-style files living in the library folder; `PlaylistEntry.trackPath` string references were chosen to keep this straightforward.
 
+## Verification gaps (from the exploratory-testing session)
+
+- **Mac right-click context menus** (songs table, playlist rows) resist synthetic events — NSMenu tracking wants real HID input. One human right-click confirms them; a Mac XCUITest target (mirroring `Apps/iOS/UITests`) is the automated fix and would also give trusted double-click/menu events for future Mac exploration.
+- **VoiceOver on the Mac**: explicit `.accessibilityLabel`s are on all transport buttons and the playlist "+" now, and the same shared views verify labeled on iOS — but System Events' legacy AX bridge is too lossy to confirm on macOS (some SwiftUI buttons surface unlabeled, some not at all). One ⌘F5 VoiceOver pass, or the Mac XCUITest target above, settles it.
+
 ## Test health
 
 - `LocalFolderWatcherTests.deletingAFileEmitsARemoveWithItsRelativePath` intermittently times out waiting for a real DispatchSource FS event when run in isolation (pre-existing; bisected as unrelated to the M6 changes). Consider a filesystem-event test double if it flakes in CI.
