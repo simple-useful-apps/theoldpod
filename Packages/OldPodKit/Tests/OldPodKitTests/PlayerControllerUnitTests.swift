@@ -47,6 +47,23 @@ struct PlayerControllerUnitTests {
         #expect(controller.current == nil)
     }
 
+    /// `playShuffled` should leave `isShuffled` on, land on some track (not
+    /// necessarily the first), and never drop or duplicate a track — the
+    /// underlying shuffle uses `SystemRandomNumberGenerator`, so the actual
+    /// order/start isn't asserted, only that the whole set survives.
+    @Test func playShuffledSetsShuffledFlagAndKeepsEveryTrack() {
+        let controller = PlayerController()
+        let tracks = (0 ..< 6).map { makeTrack(relativePath: "shuffled-\($0)", duration: 10) }
+
+        controller.playShuffled(tracks)
+
+        #expect(controller.isShuffled)
+        #expect(controller.current != nil)
+        #expect(controller.queue.items.count == tracks.count)
+        #expect(Set(controller.queue.items.map(\.relativePath)) == Set(tracks.map(\.relativePath)))
+        controller.stop()
+    }
+
     @Test func nextAtTailUnderRepeatOffKeepsCurrentTrackUnchanged() {
         let controller = PlayerController()
         let only = makeTrack(duration: 10)

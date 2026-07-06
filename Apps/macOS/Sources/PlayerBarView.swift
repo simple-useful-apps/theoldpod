@@ -62,7 +62,7 @@ struct PlayerBarView: View {
     private var lcd: some View {
         if let current = player.current {
             HStack(spacing: 10) {
-                ArtworkImage(artworkID: current.artworkID, directory: artworkDirectory)
+                ArtworkImage(artworkID: current.artworkID, directory: artworkDirectory, pointSize: 40)
                     .frame(width: 40, height: 40)
 
                 VStack(alignment: .leading, spacing: 3) {

@@ -19,7 +19,7 @@ public struct ArtistDetailView: View {
                 AlbumDetailView(album: album, coordinator: coordinator)
             } label: {
                 HStack(spacing: 12) {
-                    ArtworkImage(artworkID: album.artworkID, directory: coordinator.artworkDirectory, cornerRadius: 4)
+                    ArtworkImage(artworkID: album.artworkID, directory: coordinator.artworkDirectory, cornerRadius: 4, pointSize: 56)
                         .frame(width: 56, height: 56)
 
                     VStack(alignment: .leading, spacing: 2) {

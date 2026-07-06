@@ -128,6 +128,25 @@ struct LibraryGroupsTests {
 
         #expect(resolved.map(\.title) == ["C", "A", "B"])
     }
+
+    /// `context.model(for:)` would happily hand back a faulted object for a
+    /// deleted track's stale `PersistentIdentifier`, and touching its
+    /// properties later would crash. `tracks(for:in:)` should instead fetch
+    /// and simply drop IDs that no longer resolve to a live `Track`.
+    @Test func tracksForIDsSilentlyDropsAStaleIDForADeletedTrack() throws {
+        let context = makeContext()
+        let a = insert(context, title: "A", artist: "Band")
+        let b = insert(context, title: "B", artist: "Band")
+        try context.save()
+
+        let staleID = b.persistentModelID
+        context.delete(b)
+        try context.save()
+
+        let resolved = LibraryGroups.tracks(for: [staleID, a.persistentModelID], in: context)
+
+        #expect(resolved.map(\.title) == ["A"])
+    }
 }
 
 @MainActor

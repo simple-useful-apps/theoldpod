@@ -16,6 +16,7 @@ public struct PlayableTrack: Sendable, Equatable, Identifiable {
     public let album: String
     public let duration: TimeInterval
     public let artworkID: String?
+    public let isDownloaded: Bool
 
     public init(
         relativePath: String,
@@ -24,7 +25,8 @@ public struct PlayableTrack: Sendable, Equatable, Identifiable {
         artist: String,
         album: String,
         duration: TimeInterval,
-        artworkID: String?
+        artworkID: String?,
+        isDownloaded: Bool = true
     ) {
         self.relativePath = relativePath
         self.url = url
@@ -33,6 +35,7 @@ public struct PlayableTrack: Sendable, Equatable, Identifiable {
         self.album = album
         self.duration = duration
         self.artworkID = artworkID
+        self.isDownloaded = isDownloaded
     }
 
     /// Snapshots a SwiftData `Track` (main-actor only) into a value that can
@@ -47,6 +50,7 @@ public struct PlayableTrack: Sendable, Equatable, Identifiable {
         album = track.album
         duration = track.duration
         artworkID = track.artworkID
+        isDownloaded = track.isDownloaded
     }
 }
 

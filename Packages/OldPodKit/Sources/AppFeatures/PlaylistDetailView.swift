@@ -13,7 +13,8 @@ public struct PlaylistDetailView: View {
     let playlist: Playlist
     let coordinator: LibraryCoordinator
 
-    // One fetch of every `Track`, turned into a `relativePath -> Track`
+    // Only the tracks this playlist's entries actually reference (not every
+    // `Track` in the library), turned into a `relativePath -> Track`
     // dictionary below, so resolving each entry never issues its own query.
     @Query private var allTracks: [Track]
     @Environment(\.modelContext) private var modelContext
@@ -21,6 +22,8 @@ public struct PlaylistDetailView: View {
     public init(playlist: Playlist, coordinator: LibraryCoordinator) {
         self.playlist = playlist
         self.coordinator = coordinator
+        let paths = Set(PlaylistOps.sortedEntries(of: playlist).map(\.trackPath))
+        _allTracks = Query(filter: #Predicate<Track> { paths.contains($0.relativePath) })
     }
 
     private var entries: [PlaylistEntry] {
@@ -159,14 +162,10 @@ public struct PlaylistDetailView: View {
         coordinator.player.play(coordinator.playableTracks(from: tracks), startingAt: 0)
     }
 
-    /// Plays the whole playlist, then ensures shuffle is on (never toggles
-    /// it off if it's already shuffled).
+    /// Plays the whole playlist shuffled, starting from a random track.
     private func shuffle(tracks: [Track]) {
         guard !tracks.isEmpty else { return }
-        coordinator.player.play(coordinator.playableTracks(from: tracks), startingAt: 0)
-        if !coordinator.player.isShuffled {
-            coordinator.player.toggleShuffle()
-        }
+        coordinator.player.playShuffled(coordinator.playableTracks(from: tracks))
     }
 }
 

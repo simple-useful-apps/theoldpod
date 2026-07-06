@@ -31,24 +31,6 @@ public final class LibraryCoordinator {
         artwork.directory
     }
 
-    /// Default stack: `LibraryContainerFactory`'s default container, an
-    /// `ArtworkStore` at `<App Support>/theoldpod/Artwork`, and a
-    /// `LocalFolderWatcher` rooted at `LibraryLocation.defaultRoot()`.
-    /// Always local — `make()` is the entry point that resolves an
-    /// iCloud-backed library when one's available.
-    public init() throws {
-        let root = try LibraryLocation.defaultRoot()
-        container = try LibraryContainerFactory.make(storeURL: nil)
-        let artworkDirectory = try Self.defaultArtworkDirectory()
-        artwork = try ArtworkStore(directory: artworkDirectory)
-        watcher = LocalFolderWatcher(root: root)
-        libraryRoot = root
-        isCloudLibrary = false
-        let player = PlayerController()
-        self.player = player
-        nowPlaying = NowPlayingBridge(player: player, artworkDirectory: artworkDirectory)
-    }
-
     /// For tests and previews: inject every collaborator.
     public init(
         container: ModelContainer,
