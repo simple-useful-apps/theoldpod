@@ -18,7 +18,7 @@ let package = Package(
     ],
     targets: [
         .target(name: "Domain"),
-        .target(name: "LibraryStore", dependencies: ["Domain"]),
+        .target(name: "LibraryStore", dependencies: ["Domain", "MetadataImport", "CloudFiles"]),
         .target(name: "MetadataImport", dependencies: ["Domain"]),
         .target(name: "CloudFiles"),
         .target(name: "PlaybackEngine", dependencies: ["Domain", "CloudFiles"]),
