@@ -1,17 +1,24 @@
 import CloudFiles
+import Domain
 import Foundation
 import LibraryStore
 import MetadataImport
+import NowPlaying
 import Observation
+import PlaybackEngine
 import SwiftData
 
 /// Non-UI coordinator that owns the library's SwiftData container, artwork
 /// cache, and folder watcher, and pumps file-system diffs into the indexer.
+/// Also owns the playback stack: the `PlayerController` and its
+/// `NowPlayingBridge` to the lock screen / Control Center / media keys.
 @MainActor
 @Observable
 public final class LibraryCoordinator {
     public let container: ModelContainer
     public let libraryRoot: URL
+    public let player: PlayerController
+    public let nowPlaying: NowPlayingBridge
 
     private let watcher: any LibraryFolderWatching
     private let artwork: ArtworkStore
@@ -23,9 +30,13 @@ public final class LibraryCoordinator {
     public init() throws {
         let root = try LibraryLocation.defaultRoot()
         container = try LibraryContainerFactory.make(storeURL: nil)
-        artwork = try ArtworkStore(directory: Self.defaultArtworkDirectory())
+        let artworkDirectory = try Self.defaultArtworkDirectory()
+        artwork = try ArtworkStore(directory: artworkDirectory)
         watcher = LocalFolderWatcher(root: root)
         libraryRoot = root
+        let player = PlayerController()
+        self.player = player
+        nowPlaying = NowPlayingBridge(player: player, artworkDirectory: artworkDirectory)
     }
 
     /// For tests and previews: inject every collaborator.
@@ -39,10 +50,14 @@ public final class LibraryCoordinator {
         self.watcher = watcher
         self.artwork = artwork
         self.libraryRoot = libraryRoot
+        let player = PlayerController()
+        self.player = player
+        nowPlaying = NowPlayingBridge(player: player, artworkDirectory: artwork.directory)
     }
 
     /// Idempotent: starts a task consuming `watcher.changes()` into the
-    /// indexer. Calling this again while already running is a no-op.
+    /// indexer, and activates the now-playing bridge. Calling this again
+    /// while already running is a no-op.
     public func start() {
         guard watchTask == nil else { return }
         let container = container
@@ -54,6 +69,13 @@ public final class LibraryCoordinator {
                 await indexer.apply(changes)
             }
         }
+        nowPlaying.activate()
+    }
+
+    /// Snapshots SwiftData `Track`s into `PlayableTrack` values suitable for
+    /// handing to `player.play(_:startingAt:)`.
+    public func playableTracks(from tracks: [Track]) -> [PlayableTrack] {
+        tracks.map { PlayableTrack(track: $0, libraryRoot: libraryRoot) }
     }
 
     public func stop() {

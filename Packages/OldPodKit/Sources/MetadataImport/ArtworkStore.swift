@@ -4,7 +4,7 @@ import Foundation
 /// A content-addressed on-disk cache of embedded artwork images, keyed by the
 /// first 16 hex characters of the image data's SHA-256 digest.
 public struct ArtworkStore: Sendable {
-    private let directory: URL
+    public let directory: URL
 
     public init(directory: URL) {
         self.directory = directory

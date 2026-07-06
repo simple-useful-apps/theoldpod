@@ -12,8 +12,11 @@ public struct LibraryRootView: View {
 
     public var body: some View {
         NavigationStack {
-            SongsListView(libraryRootPath: coordinator.libraryRoot.path)
+            SongsListView(coordinator: coordinator)
                 .navigationTitle("Songs")
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    MiniPlayerBar(player: coordinator.player)
+                }
         }
         .task {
             coordinator.start()
