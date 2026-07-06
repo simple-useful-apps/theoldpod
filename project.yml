@@ -39,6 +39,15 @@ targets:
         UIBackgroundModes: [audio]
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         ITSAppUsesNonExemptEncryption: false
+        # Local Documents/Music is visible in the Files app today, ahead of
+        # M5's iCloud entitlements (see docs/ICLOUD.md).
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
+        NSUbiquitousContainers:
+          iCloud.com.mattreed.theoldpod:
+            NSUbiquitousContainerIsDocumentScopePublic: true
+            NSUbiquitousContainerName: "The Old Pod"
+            NSUbiquitousContainerSupportedFolderLevels: Any
 
   TheOldPod-macOS:
     type: application
@@ -68,3 +77,8 @@ targets:
       properties:
         CFBundleDisplayName: theoldpod
         LSApplicationCategoryType: public.app-category.music
+        NSUbiquitousContainers:
+          iCloud.com.mattreed.theoldpod:
+            NSUbiquitousContainerIsDocumentScopePublic: true
+            NSUbiquitousContainerName: "The Old Pod"
+            NSUbiquitousContainerSupportedFolderLevels: Any

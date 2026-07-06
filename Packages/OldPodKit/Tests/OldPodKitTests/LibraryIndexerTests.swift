@@ -199,6 +199,59 @@ struct LibraryIndexerTests {
         let tracks = try context.fetch(FetchDescriptor<Track>())
         #expect(tracks.isEmpty)
     }
+
+    @Test func notDownloadedFileSkipsMetadataReadEvenForATaggedFixture() async throws {
+        let (indexer, context, _, tempDirectory) = try makeIndexer()
+        defer { try? FileManager.default.removeItem(at: tempDirectory) }
+
+        // cbr-tagged.mp3 has real ID3 tags ("Fixture One"); the indexer must
+        // not read them (that would force-download an iCloud placeholder) as
+        // long as isDownloaded is false.
+        let url = TestFixtures.url("cbr-tagged.mp3")
+        let file = try LibraryFile(
+            relativePath: "cbr-tagged.mp3", url: url, size: fileSize(url), modified: fileModified(url),
+            isDownloaded: false
+        )
+
+        await indexer.apply([.upsert(file)])
+
+        let tracks = try context.fetch(FetchDescriptor<Track>())
+        let track = try #require(tracks.first)
+        #expect(track.title == "cbr-tagged")
+        #expect(track.duration == 0)
+        #expect(track.isDownloaded == false)
+    }
+
+    @Test func downloadedFlipFromFalseToTrueWithSameSizeAndDateTriggersAReread() async throws {
+        let (indexer, context, _, tempDirectory) = try makeIndexer()
+        defer { try? FileManager.default.removeItem(at: tempDirectory) }
+
+        let url = TestFixtures.url("cbr-tagged.mp3")
+        let size = try fileSize(url)
+        let modified = try fileModified(url)
+
+        let notDownloaded = LibraryFile(
+            relativePath: "cbr-tagged.mp3", url: url, size: size, modified: modified, isDownloaded: false
+        )
+        await indexer.apply([.upsert(notDownloaded)])
+
+        var tracks = try context.fetch(FetchDescriptor<Track>())
+        var track = try #require(tracks.first)
+        #expect(track.title == "cbr-tagged")
+        #expect(track.isDownloaded == false)
+
+        // Same size and modified date — only isDownloaded differs — must
+        // still trigger a re-read, since the file now has real bytes.
+        let nowDownloaded = LibraryFile(
+            relativePath: "cbr-tagged.mp3", url: url, size: size, modified: modified, isDownloaded: true
+        )
+        await indexer.apply([.upsert(nowDownloaded)])
+
+        tracks = try context.fetch(FetchDescriptor<Track>())
+        track = try #require(tracks.first)
+        #expect(track.title == "Fixture One")
+        #expect(track.isDownloaded == true)
+    }
 }
 
 private func makeIndexer() throws -> (
