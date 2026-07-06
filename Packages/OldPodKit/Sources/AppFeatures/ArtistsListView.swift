@@ -43,9 +43,6 @@ public struct ArtistsListView: View {
     }
 
     private func summary(for artist: ArtistGroup) -> String {
-        let albumCount = artist.albums.count
-        let albumWord = albumCount == 1 ? "album" : "albums"
-        let songWord = artist.trackCount == 1 ? "song" : "songs"
-        return "\(albumCount) \(albumWord) · \(artist.trackCount) \(songWord)"
+        "\(LibraryText.albumCount(artist.albums.count)) · \(LibraryText.songCount(artist.trackCount))"
     }
 }

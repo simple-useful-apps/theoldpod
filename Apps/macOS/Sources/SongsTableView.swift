@@ -166,28 +166,22 @@ struct SongsTableView: View {
         let orderedIDs = visibleRows.map(\.id)
         guard let clickedID = ids.first, let index = orderedIDs.firstIndex(of: clickedID) else { return }
         let allTracks = LibraryGroups.tracks(for: orderedIDs, in: modelContext)
-        coordinator.player.play(coordinator.playableTracks(from: allTracks), startingAt: index)
+        coordinator.play(allTracks, startingAt: index)
     }
 
     /// Context menu "Play": play just the selected row(s), in visible order.
     private func play(_ ids: Set<PersistentIdentifier>) {
         let tracks = orderedTracks(matching: ids)
         guard !tracks.isEmpty else { return }
-        coordinator.player.play(coordinator.playableTracks(from: tracks), startingAt: 0)
+        coordinator.play(tracks, startingAt: 0)
     }
 
     private func playNext(_ ids: Set<PersistentIdentifier>) {
-        let playables = coordinator.playableTracks(from: orderedTracks(matching: ids))
-        for playable in playables.reversed() {
-            coordinator.player.playNext(playable)
-        }
+        coordinator.playNext(orderedTracks(matching: ids))
     }
 
     private func addToQueue(_ ids: Set<PersistentIdentifier>) {
-        let playables = coordinator.playableTracks(from: orderedTracks(matching: ids))
-        for playable in playables {
-            coordinator.player.append(playable)
-        }
+        coordinator.enqueue(orderedTracks(matching: ids))
     }
 
     private func addToPlaylist(_ playlist: Playlist, ids: Set<PersistentIdentifier>) {

@@ -68,7 +68,7 @@ public struct PlaylistDetailView: View {
                 ContentUnavailableView(
                     "No Songs",
                     systemImage: "music.note.list",
-                    description: Text("Add songs from Songs or an Album using \"Add to Playlist…\".")
+                    description: Text("Add songs from the library with Add to Playlist.")
                 )
             } else {
                 List {
@@ -88,9 +88,7 @@ public struct PlaylistDetailView: View {
                                 )
                                 .contentShape(Rectangle())
                                 .onTapGesture {
-                                    coordinator.player.play(
-                                        coordinator.playableTracks(from: resolvedTracks), startingAt: resolvedIndex
-                                    )
+                                    coordinator.play(resolvedTracks, startingAt: resolvedIndex)
                                 }
                             } else {
                                 DanglingRow(path: row.entry.trackPath)
@@ -124,25 +122,11 @@ public struct PlaylistDetailView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            HStack(spacing: 12) {
-                Button {
-                    play(tracks: resolvedTracks)
-                } label: {
-                    Label("Play", systemImage: "play.fill")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(resolvedTracks.isEmpty)
-
-                Button {
-                    shuffle(tracks: resolvedTracks)
-                } label: {
-                    Label("Shuffle", systemImage: "shuffle")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-                .disabled(resolvedTracks.isEmpty)
-            }
+            PlayShuffleButtons(
+                isEnabled: !resolvedTracks.isEmpty,
+                onPlay: { play(tracks: resolvedTracks) },
+                onShuffle: { shuffle(tracks: resolvedTracks) }
+            )
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 12)
@@ -150,22 +134,19 @@ public struct PlaylistDetailView: View {
     }
 
     private func metadataLine(resolvedTracks: [Track]) -> String {
-        var parts: [String] = []
-        parts.append(resolvedTracks.count == 1 ? "1 song" : "\(resolvedTracks.count) songs")
         let totalDuration = resolvedTracks.reduce(0) { $0 + $1.duration }
-        parts.append(DurationText.format(totalDuration))
-        return parts.joined(separator: " · ")
+        return LibraryText.summary(songs: resolvedTracks.count, duration: totalDuration)
     }
 
     private func play(tracks: [Track]) {
         guard !tracks.isEmpty else { return }
-        coordinator.player.play(coordinator.playableTracks(from: tracks), startingAt: 0)
+        coordinator.play(tracks, startingAt: 0)
     }
 
     /// Plays the whole playlist shuffled, starting from a random track.
     private func shuffle(tracks: [Track]) {
         guard !tracks.isEmpty else { return }
-        coordinator.player.playShuffled(coordinator.playableTracks(from: tracks))
+        coordinator.playShuffled(tracks)
     }
 }
 
@@ -225,7 +206,7 @@ private struct DanglingRow: View {
                 Text(filenameStem)
                     .font(.body)
                     .foregroundStyle(.secondary)
-                Text("file missing")
+                Text("File missing")
                     .font(.caption)
                     .italic()
                     .foregroundStyle(.secondary)

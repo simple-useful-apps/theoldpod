@@ -105,7 +105,7 @@ public struct PlaylistsListView: View {
         VStack(alignment: .leading, spacing: 2) {
             Text(playlist.name)
                 .font(.body)
-            Text(playlist.entries.count == 1 ? "1 song" : "\(playlist.entries.count) songs")
+            Text(LibraryText.songCount(playlist.entries.count))
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

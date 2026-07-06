@@ -62,9 +62,9 @@ struct PlaylistDetailView: View {
             Divider()
             if entries.isEmpty {
                 ContentUnavailableView(
-                    "No Songs Yet",
+                    "No Songs",
                     systemImage: "music.note.list",
-                    description: Text("Add songs from the Songs list's \u{201C}Add to Playlist\u{201D} menu.")
+                    description: Text("Add songs from the library with Add to Playlist.")
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -80,26 +80,18 @@ struct PlaylistDetailView: View {
                 Text(playlist.name)
                     .font(.title2)
                     .fontWeight(.semibold)
-                Text("\(entries.count) song\(entries.count == 1 ? "" : "s") \u{00B7} \(DurationText.format(totalDuration))")
+                Text(LibraryText.summary(songs: entries.count, duration: totalDuration))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            Button {
-                playAll()
-            } label: {
-                Label("Play", systemImage: "play.fill")
-            }
-            .disabled(resolvedEntries.isEmpty)
-
-            Button {
-                shuffleAll()
-            } label: {
-                Label("Shuffle", systemImage: "shuffle")
-            }
-            .disabled(resolvedEntries.isEmpty)
+            PlayShuffleButtons(
+                isEnabled: !resolvedEntries.isEmpty,
+                fullWidth: false,
+                onPlay: playAll,
+                onShuffle: shuffleAll
+            )
         }
-        .buttonStyle(.bordered)
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
     }
@@ -176,13 +168,13 @@ struct PlaylistDetailView: View {
     private func playAll() {
         let tracks = resolvedEntries.map(\.track)
         guard !tracks.isEmpty else { return }
-        coordinator.player.play(coordinator.playableTracks(from: tracks), startingAt: 0)
+        coordinator.play(tracks, startingAt: 0)
     }
 
     private func shuffleAll() {
         let tracks = resolvedEntries.map(\.track)
         guard !tracks.isEmpty else { return }
-        coordinator.player.playShuffled(coordinator.playableTracks(from: tracks))
+        coordinator.playShuffled(tracks)
     }
 
     /// Double-click: play the resolved (playable) entries, starting at the
@@ -192,7 +184,7 @@ struct PlaylistDetailView: View {
               let index = resolvedEntries.firstIndex(where: { $0.entry.id == clickedID })
         else { return }
         let tracks = resolvedEntries.map(\.track)
-        coordinator.player.play(coordinator.playableTracks(from: tracks), startingAt: index)
+        coordinator.play(tracks, startingAt: index)
     }
 
     /// Context menu "Play": just the selected rows, in playlist order,
@@ -200,21 +192,15 @@ struct PlaylistDetailView: View {
     private func play(_ ids: Set<PersistentIdentifier>) {
         let tracks = tracks(matching: ids)
         guard !tracks.isEmpty else { return }
-        coordinator.player.play(coordinator.playableTracks(from: tracks), startingAt: 0)
+        coordinator.play(tracks, startingAt: 0)
     }
 
     private func playNext(_ ids: Set<PersistentIdentifier>) {
-        let playables = coordinator.playableTracks(from: tracks(matching: ids))
-        for playable in playables.reversed() {
-            coordinator.player.playNext(playable)
-        }
+        coordinator.playNext(tracks(matching: ids))
     }
 
     private func addToQueue(_ ids: Set<PersistentIdentifier>) {
-        let playables = coordinator.playableTracks(from: tracks(matching: ids))
-        for playable in playables {
-            coordinator.player.append(playable)
-        }
+        coordinator.enqueue(tracks(matching: ids))
     }
 
     private func removeEntries(_ ids: Set<PersistentIdentifier>) {

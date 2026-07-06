@@ -43,9 +43,7 @@ public final class PlayerController {
     /// current track can be checked against, the queue's own state.
     private var itemTracks: [ObjectIdentifier: String] = [:]
 
-    #if os(iOS)
-        private let audioSession = AudioSessionCoordinator()
-    #endif
+    private let audioSession = AudioSessionCoordinator()
 
     private static let logger = Logger(subsystem: "OldPodKit.PlaybackEngine", category: "PlayerController")
 
@@ -70,18 +68,16 @@ public final class PlayerController {
             }
         }
 
-        #if os(iOS)
-            audioSession.onPauseRequested = { [weak self] in
-                Task { @MainActor in
-                    self?.handleExternalPause()
-                }
+        audioSession.onPauseRequested = { [weak self] in
+            Task { @MainActor in
+                self?.handleExternalPause()
             }
-            audioSession.onResumeRequested = { [weak self] in
-                Task { @MainActor in
-                    self?.handleExternalResume()
-                }
+        }
+        audioSession.onResumeRequested = { [weak self] in
+            Task { @MainActor in
+                self?.handleExternalResume()
             }
-        #endif
+        }
     }
 
     deinit {
@@ -172,14 +168,34 @@ public final class PlayerController {
     }
 
     public func playNext(_ track: PlayableTrack) {
-        let hadCurrent = queue.current != nil
-        queue.playNext(track)
-        syncPlayerItems(fullRebuild: !hadCurrent)
+        playNext([track])
     }
 
     public func append(_ track: PlayableTrack) {
+        append([track])
+    }
+
+    /// Inserts every track right after the current one, preserving `tracks`'
+    /// order — the single home for the "insert reversed" trick: each track is
+    /// individually inserted right after the current item, so inserting the
+    /// batch back-to-front leaves the batch in its original order ahead of
+    /// whatever was already queued.
+    public func playNext(_ tracks: [PlayableTrack]) {
+        guard !tracks.isEmpty else { return }
         let hadCurrent = queue.current != nil
-        queue.append(track)
+        for track in tracks.reversed() {
+            queue.playNext(track)
+        }
+        syncPlayerItems(fullRebuild: !hadCurrent)
+    }
+
+    /// Appends every track to the tail of the queue, in order.
+    public func append(_ tracks: [PlayableTrack]) {
+        guard !tracks.isEmpty else { return }
+        let hadCurrent = queue.current != nil
+        for track in tracks {
+            queue.append(track)
+        }
         syncPlayerItems(fullRebuild: !hadCurrent)
     }
 
@@ -196,9 +212,7 @@ public final class PlayerController {
 
     private func beginPlayback() {
         guard queue.current != nil else { return }
-        #if os(iOS)
-            audioSession.ensureActive()
-        #endif
+        audioSession.ensureActive()
         player.play()
         isPlaying = true
     }
@@ -351,16 +365,14 @@ public final class PlayerController {
         }
     }
 
-    #if os(iOS)
-        private func handleExternalPause() {
-            guard isPlaying else { return }
-            player.pause()
-            isPlaying = false
-        }
+    private func handleExternalPause() {
+        guard isPlaying else { return }
+        player.pause()
+        isPlaying = false
+    }
 
-        private func handleExternalResume() {
-            guard queue.current != nil, !isPlaying else { return }
-            beginPlayback()
-        }
-    #endif
+    private func handleExternalResume() {
+        guard queue.current != nil, !isPlaying else { return }
+        beginPlayback()
+    }
 }

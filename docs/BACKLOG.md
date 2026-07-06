@@ -23,6 +23,11 @@ Known items deliberately deferred from v1, mostly surfaced by the M6 full-codeba
 
 - `LocalFolderWatcherTests.deletingAFileEmitsARemoveWithItsRelativePath` intermittently times out waiting for a real DispatchSource FS event when run in isolation (pre-existing; bisected as unrelated to the M6 changes). Consider a filesystem-event test double if it flakes in CI.
 
+## Product decisions pending
+
+- **Batch "Play Next" on an empty queue starts on the batch's LAST track** (the first insert into an empty queue acts like replace-at-0, then the rest stack in front). Pre-existing behavior, preserved and pinned by a unit test during the simplify pass — decide whether first-track-first is the better semantic.
+- **iOS/Mac PlaylistDetailView remain two implementations** of one concept (~230 lines each). Shared components (PlayShuffleButtons, LibraryText, TrackContextMenuContent) now cover the drift-prone parts; full unification deferred as a larger refactor.
+
 ## Cleanup
 
 - Artwork filename pattern `"\(id).img"` is inlined in ArtworkStore, NowPlayingBridge, and the artwork thumbnail loader — acceptable duplication until the naming ever changes; a shared helper needs a cross-module home first.

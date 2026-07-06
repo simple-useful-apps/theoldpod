@@ -2,9 +2,11 @@ import ImageIO
 import SwiftUI
 
 /// Renders artwork from the on-disk artwork cache (`<directory>/<id>.img`,
-/// matching `MetadataImport.ArtworkStore`'s filename convention), falling
-/// back to `ArtworkPlaceholder` whenever there's no id, no directory, or the
-/// load fails or is still in flight.
+/// matching `MetadataImport.ArtworkStore.fileURL(for:in:)`'s filename
+/// convention — duplicated inline here rather than depending on
+/// `MetadataImport`, since `DesignSystem` is dependency-free by design),
+/// falling back to `ArtworkPlaceholder` whenever there's no id, no directory,
+/// or the load fails or is still in flight.
 ///
 /// Loads a *downsampled* thumbnail rather than the full-resolution image:
 /// artwork files can be a few megabytes, and decoding one at full size just

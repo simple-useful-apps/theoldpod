@@ -55,10 +55,12 @@ public struct SongsListView: View {
                         )
                         .contentShape(Rectangle())
                         .onTapGesture {
-                            coordinator.player.play(coordinator.playableTracks(from: filteredTracks), startingAt: index)
+                            coordinator.play(filteredTracks, startingAt: index)
                         }
                         .contextMenu {
-                            songContextMenu(for: track)
+                            TrackContextMenuContent(track: track, coordinator: coordinator) {
+                                trackPendingPlaylistAdd = track
+                            }
                         }
                     }
                 }
@@ -108,48 +110,13 @@ public struct SongsListView: View {
                 Text("\(importSkippedCount) file\(importSkippedCount == 1 ? "" : "s") couldn't be imported.")
             }
         }
-        // item-driven, NOT isPresented + separate optional: the Bool variant
-        // can evaluate its content closure before the payload write is
-        // visible, presenting an empty sheet (classic SwiftUI gotcha, found
-        // by UI testing).
-        .sheet(item: $trackPendingPlaylistAdd) { track in
-            AddToPlaylistSheet(track: track)
-        }
-    }
-
-    @ViewBuilder
-    private func songContextMenu(for track: Track) -> some View {
-        Button {
-            if let playable = coordinator.playableTracks(from: [track]).first {
-                coordinator.player.playNext(playable)
-            }
-        } label: {
-            Label("Play Next", systemImage: "text.insert")
-        }
-
-        Button {
-            if let playable = coordinator.playableTracks(from: [track]).first {
-                coordinator.player.append(playable)
-            }
-        } label: {
-            Label("Add to Queue", systemImage: "text.append")
-        }
-
-        Button {
-            // Deferred one runloop tick so the context menu's dismissal
-            // transaction completes before the sheet presentation begins.
-            Task { @MainActor in
-                trackPendingPlaylistAdd = track
-            }
-        } label: {
-            Label("Add to Playlist…", systemImage: "music.note.list")
-        }
+        .addToPlaylistSheet(for: $trackPendingPlaylistAdd)
     }
 
     private static func matches(_ track: Track, needle: String) -> Bool {
-        Self.fold(track.title).contains(needle)
-            || Self.fold(track.artist).contains(needle)
-            || Self.fold(track.album).contains(needle)
+        fold(track.title).contains(needle)
+            || fold(track.artist).contains(needle)
+            || fold(track.album).contains(needle)
     }
 
     private static func fold(_ s: String) -> String {

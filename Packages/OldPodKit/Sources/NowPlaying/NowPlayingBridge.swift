@@ -1,6 +1,7 @@
 import Foundation
 import ImageIO
 import MediaPlayer
+import MetadataImport
 import PlaybackEngine
 
 #if canImport(UIKit)
@@ -135,7 +136,7 @@ public final class NowPlayingBridge {
             return cachedArtwork.artwork
         }
 
-        let url = artworkDirectory.appendingPathComponent("\(artworkID).img")
+        let url = ArtworkStore.fileURL(for: artworkID, in: artworkDirectory)
         guard let data = try? Data(contentsOf: url),
               let source = CGImageSourceCreateWithData(data as CFData, nil),
               let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil)

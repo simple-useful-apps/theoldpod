@@ -24,6 +24,13 @@ public struct ArtworkStore: Sendable {
     }
 
     public func url(for id: String) -> URL {
+        Self.fileURL(for: id, in: directory)
+    }
+
+    /// The canonical `<directory>/<id>.img` filename convention, exposed
+    /// statically so callers that only have a directory (no `ArtworkStore`
+    /// instance) — e.g. `NowPlayingBridge` — don't need to hand-roll it.
+    public static func fileURL(for id: String, in directory: URL) -> URL {
         directory.appendingPathComponent("\(id).img")
     }
 }

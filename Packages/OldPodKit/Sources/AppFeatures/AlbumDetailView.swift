@@ -42,10 +42,12 @@ public struct AlbumDetailView: View {
                     )
                     .contentShape(Rectangle())
                     .onTapGesture {
-                        coordinator.player.play(coordinator.playableTracks(from: tracks), startingAt: index)
+                        coordinator.play(tracks, startingAt: index)
                     }
                     .contextMenu {
-                        trackContextMenu(for: track)
+                        TrackContextMenuContent(track: track, coordinator: coordinator) {
+                            trackPendingPlaylistAdd = track
+                        }
                     }
                 }
             }
@@ -55,42 +57,7 @@ public struct AlbumDetailView: View {
         #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
         #endif
-            // item-driven, NOT isPresented + separate optional: the Bool
-            // variant can evaluate its content closure before the payload
-            // write is visible, presenting an empty sheet (classic SwiftUI
-            // gotcha, found by UI testing).
-            .sheet(item: $trackPendingPlaylistAdd) { track in
-                AddToPlaylistSheet(track: track)
-            }
-    }
-
-    @ViewBuilder
-    private func trackContextMenu(for track: Track) -> some View {
-        Button {
-            if let playable = coordinator.playableTracks(from: [track]).first {
-                coordinator.player.playNext(playable)
-            }
-        } label: {
-            Label("Play Next", systemImage: "text.insert")
-        }
-
-        Button {
-            if let playable = coordinator.playableTracks(from: [track]).first {
-                coordinator.player.append(playable)
-            }
-        } label: {
-            Label("Add to Queue", systemImage: "text.append")
-        }
-
-        Button {
-            // Deferred one runloop tick so the context menu's dismissal
-            // transaction completes before the sheet presentation begins.
-            Task { @MainActor in
-                trackPendingPlaylistAdd = track
-            }
-        } label: {
-            Label("Add to Playlist…", systemImage: "music.note.list")
-        }
+            .addToPlaylistSheet(for: $trackPendingPlaylistAdd)
     }
 
     private func header(tracks: [Track]) -> some View {
@@ -111,28 +78,16 @@ public struct AlbumDetailView: View {
                     .foregroundStyle(.secondary)
             }
 
-            HStack(spacing: 12) {
-                Button {
-                    play(tracks: tracks)
-                } label: {
-                    Label("Play", systemImage: "play.fill")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                // Distinct from the always-present (if disabled) mini-player
-                // transport button, which shares the "Play" label whenever
-                // nothing is queued yet.
-                .accessibilityIdentifier("albumPlayButton")
-
-                Button {
-                    shuffle(tracks: tracks)
-                } label: {
-                    Label("Shuffle", systemImage: "shuffle")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-                .accessibilityIdentifier("albumShuffleButton")
-            }
+            // Distinct from the always-present (if disabled) mini-player
+            // transport button, which shares the "Play" label whenever
+            // nothing is queued yet.
+            PlayShuffleButtons(
+                isEnabled: !tracks.isEmpty,
+                playAccessibilityIdentifier: "albumPlayButton",
+                shuffleAccessibilityIdentifier: "albumShuffleButton",
+                onPlay: { play(tracks: tracks) },
+                onShuffle: { shuffle(tracks: tracks) }
+            )
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 16)
@@ -144,19 +99,18 @@ public struct AlbumDetailView: View {
         if let year = album.year {
             parts.append(String(year))
         }
-        parts.append(tracks.count == 1 ? "1 song" : "\(tracks.count) songs")
         let totalDuration = tracks.reduce(0) { $0 + $1.duration }
-        parts.append(DurationText.format(totalDuration))
+        parts.append(LibraryText.summary(songs: tracks.count, duration: totalDuration))
         return parts.joined(separator: " · ")
     }
 
     private func play(tracks: [Track]) {
-        coordinator.player.play(coordinator.playableTracks(from: tracks), startingAt: 0)
+        coordinator.play(tracks, startingAt: 0)
     }
 
     /// Plays the whole album shuffled, starting from a random track.
     private func shuffle(tracks: [Track]) {
-        coordinator.player.playShuffled(coordinator.playableTracks(from: tracks))
+        coordinator.playShuffled(tracks)
     }
 }
 

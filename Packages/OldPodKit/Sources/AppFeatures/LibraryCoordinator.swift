@@ -99,6 +99,26 @@ public final class LibraryCoordinator {
         tracks.map { PlayableTrack(track: $0, libraryRoot: libraryRoot) }
     }
 
+    // MARK: - Play conveniences
+
+    /// Thin wrappers over `playableTracks(from:)` + `player`, so views never
+    /// need to spell out that two-step dance themselves.
+    public func play(_ tracks: [Track], startingAt index: Int = 0) {
+        player.play(playableTracks(from: tracks), startingAt: index)
+    }
+
+    public func playShuffled(_ tracks: [Track]) {
+        player.playShuffled(playableTracks(from: tracks))
+    }
+
+    public func playNext(_ tracks: [Track]) {
+        player.playNext(playableTracks(from: tracks))
+    }
+
+    public func enqueue(_ tracks: [Track]) {
+        player.append(playableTracks(from: tracks))
+    }
+
     /// No production caller today — the coordinator lives for the whole
     /// process. Kept as the symmetric teardown for tests and any future
     /// library-root switching.

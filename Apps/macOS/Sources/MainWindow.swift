@@ -248,7 +248,7 @@ private struct ArtistsDetailView: View {
                         ForEach(artists) { artist in
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(artist.name)
-                                Text("\(artist.trackCount) song\(artist.trackCount == 1 ? "" : "s")")
+                                Text(LibraryText.songCount(artist.trackCount))
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }

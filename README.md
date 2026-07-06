@@ -13,6 +13,10 @@ It works the way music software used to: Artists, Albums, Songs, Playlists. Pick
 - **Calm.** No badges, no upsells, no recommendations, no analytics. The app wants nothing from you.
 - **Native on each platform.** The iPhone app is a real iPhone app; the Mac app is a real Mac app — sidebar, song table, media keys, mini player.
 
+## Learning the codebase
+
+[docs/TOUR.md](docs/TOUR.md) is a guided reading order — the load-bearing 80% of the code in an afternoon, from the file watcher to the play queue.
+
 ## Building
 
 Requires macOS 26, Xcode 26, and [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`).

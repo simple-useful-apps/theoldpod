@@ -22,7 +22,7 @@ let package = Package(
         .target(name: "MetadataImport", dependencies: ["Domain"]),
         .target(name: "CloudFiles"),
         .target(name: "PlaybackEngine", dependencies: ["Domain", "CloudFiles"]),
-        .target(name: "NowPlaying", dependencies: ["PlaybackEngine"]),
+        .target(name: "NowPlaying", dependencies: ["PlaybackEngine", "MetadataImport"]),
         .target(name: "DesignSystem"),
         .target(
             name: "AppFeatures",
