@@ -13,6 +13,9 @@ public struct AlbumDetailView: View {
 
     @Environment(\.modelContext) private var modelContext
 
+    @State private var trackPendingPlaylistAdd: Track?
+    @State private var isPresentingAddToPlaylist = false
+
     public init(album: AlbumGroup, coordinator: LibraryCoordinator) {
         self.album = album
         self.coordinator = coordinator
@@ -42,6 +45,9 @@ public struct AlbumDetailView: View {
                     .onTapGesture {
                         coordinator.player.play(coordinator.playableTracks(from: tracks), startingAt: index)
                     }
+                    .contextMenu {
+                        trackContextMenu(for: track)
+                    }
                 }
             }
         }
@@ -50,6 +56,37 @@ public struct AlbumDetailView: View {
         #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
         #endif
+            .sheet(isPresented: $isPresentingAddToPlaylist) {
+                if let trackPendingPlaylistAdd {
+                    AddToPlaylistSheet(track: trackPendingPlaylistAdd)
+                }
+            }
+    }
+
+    @ViewBuilder
+    private func trackContextMenu(for track: Track) -> some View {
+        Button {
+            if let playable = coordinator.playableTracks(from: [track]).first {
+                coordinator.player.playNext(playable)
+            }
+        } label: {
+            Label("Play Next", systemImage: "text.insert")
+        }
+
+        Button {
+            if let playable = coordinator.playableTracks(from: [track]).first {
+                coordinator.player.append(playable)
+            }
+        } label: {
+            Label("Add to Queue", systemImage: "text.append")
+        }
+
+        Button {
+            trackPendingPlaylistAdd = track
+            isPresentingAddToPlaylist = true
+        } label: {
+            Label("Add to Playlist…", systemImage: "music.note.list")
+        }
     }
 
     private func header(tracks: [Track]) -> some View {

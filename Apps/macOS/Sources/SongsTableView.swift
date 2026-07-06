@@ -44,6 +44,7 @@ struct SongRow: Identifiable, Equatable {
 /// Artists, and Albums sidebar destinations in `MacRootView`.
 struct SongsTableView: View {
     @Query(sort: [SortDescriptor(\Track.title)]) private var tracks: [Track]
+    @Query(sort: \Playlist.createdAt) private var playlists: [Playlist]
     @Environment(\.modelContext) private var modelContext
 
     private let coordinator: LibraryCoordinator
@@ -110,6 +111,16 @@ struct SongsTableView: View {
             Button("Play") { play(ids) }
             Button("Play Next") { playNext(ids) }
             Button("Add to Queue") { addToQueue(ids) }
+            Divider()
+            Menu("Add to Playlist") {
+                ForEach(playlists) { playlist in
+                    Button(playlist.name) { addToPlaylist(playlist, ids: ids) }
+                }
+                if !playlists.isEmpty {
+                    Divider()
+                }
+                Button("New Playlist\u{2026}") { addToNewPlaylist(ids) }
+            }
         } primaryAction: { ids in
             playFromVisibleOrder(clicked: ids)
         }
@@ -169,5 +180,16 @@ struct SongsTableView: View {
         for playable in playables {
             coordinator.player.append(playable)
         }
+    }
+
+    private func addToPlaylist(_ playlist: Playlist, ids: Set<PersistentIdentifier>) {
+        for track in orderedTracks(matching: ids) {
+            PlaylistOps.add(track, to: playlist, in: modelContext)
+        }
+    }
+
+    private func addToNewPlaylist(_ ids: Set<PersistentIdentifier>) {
+        let playlist = PlaylistOps.create(name: "New Playlist", in: modelContext)
+        addToPlaylist(playlist, ids: ids)
     }
 }
