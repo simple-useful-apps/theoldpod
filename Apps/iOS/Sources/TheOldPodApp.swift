@@ -8,7 +8,7 @@ struct TheOldPodApp: App {
     var body: some Scene {
         WindowGroup {
             if let coordinator {
-                LibraryRootView(coordinator: coordinator)
+                RootTabView(coordinator: coordinator)
                     .modelContainer(coordinator.container)
             } else {
                 Text("theoldpod couldn't set up its library folder.")

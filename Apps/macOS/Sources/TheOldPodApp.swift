@@ -8,7 +8,7 @@ struct TheOldPodApp: App {
     var body: some Scene {
         Window("theoldpod", id: "main") {
             if let coordinator {
-                LibraryRootView(coordinator: coordinator)
+                MacRootView(coordinator: coordinator)
                     .modelContainer(coordinator.container)
             } else {
                 Text("theoldpod couldn't set up its library folder.")
@@ -16,11 +16,27 @@ struct TheOldPodApp: App {
                     .padding()
             }
         }
+        .defaultSize(width: 1000, height: 640)
         .commands {
             if let coordinator {
                 PlaybackCommands(coordinator: coordinator)
             }
         }
+
+        // A standalone Now Playing surface — reachable from the Window menu's
+        // default "Mini Player" entry, per the design language's "a persistent
+        // now-playing surface is always reachable."
+        Window("Mini Player", id: "mini") {
+            if let coordinator {
+                NowPlayingView(player: coordinator.player, artworkDirectory: coordinator.artworkDirectory)
+            } else {
+                Text("theoldpod couldn't set up its library folder.")
+                    .foregroundStyle(.secondary)
+                    .padding()
+            }
+        }
+        .defaultSize(width: 340, height: 480)
+        .windowResizability(.contentSize)
     }
 }
 

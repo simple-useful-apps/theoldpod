@@ -24,6 +24,12 @@ public final class LibraryCoordinator {
     private let artwork: ArtworkStore
     private var watchTask: Task<Void, Never>?
 
+    /// Where `ArtworkStore` caches embedded artwork, for views (`ArtworkImage`,
+    /// `NowPlayingView`) that render it directly.
+    public var artworkDirectory: URL {
+        artwork.directory
+    }
+
     /// Default stack: `LibraryContainerFactory`'s default container, an
     /// `ArtworkStore` at `<App Support>/theoldpod/Artwork`, and a
     /// `LocalFolderWatcher` rooted at `LibraryLocation.defaultRoot()`.
