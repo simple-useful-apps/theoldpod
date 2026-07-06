@@ -51,7 +51,7 @@ private struct AlbumCell: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            ArtworkImage(artworkID: album.artworkID, directory: artworkDirectory, cornerRadius: 8)
+            ArtworkImage(artworkID: album.artworkID, directory: artworkDirectory, cornerRadius: 8, pointSize: 180)
             Text(album.title)
                 .font(.subheadline)
                 .foregroundStyle(.primary)

@@ -103,9 +103,20 @@ public enum LibraryGroups {
     /// `player.play(_:startingAt:)`. `Track` is a `@Model` and must stay on
     /// the main actor, which is why `AlbumGroup`/`ArtistGroup` only carry
     /// `PersistentIdentifier`s in the first place.
+    ///
+    /// Uses a `FetchDescriptor` rather than `context.model(for:)`: the latter
+    /// happily hands back a faulted object for an ID whose backing row was
+    /// since deleted (e.g. the track's file vanished and the library was
+    /// reindexed), and touching that object's properties later crashes.
+    /// Fetching only returns IDs that still exist, so a stale ID is simply
+    /// dropped instead.
     @MainActor
     public static func tracks(for ids: [PersistentIdentifier], in context: ModelContext) -> [Track] {
-        ids.compactMap { context.model(for: $0) as? Track }
+        guard !ids.isEmpty else { return [] }
+        let descriptor = FetchDescriptor<Track>(predicate: #Predicate { ids.contains($0.persistentModelID) })
+        let fetched = (try? context.fetch(descriptor)) ?? []
+        let tracksByID = Dictionary(uniqueKeysWithValues: fetched.map { ($0.persistentModelID, $0) })
+        return ids.compactMap { tracksByID[$0] }
     }
 
     // MARK: - Grouping helpers

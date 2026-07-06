@@ -28,6 +28,7 @@ public final class NowPlayingBridge {
         isActive = true
         registerCommandHandlers()
         scheduleNowPlayingInfoUpdate()
+        pushNowPlayingInfo()
     }
 
     public func deactivate() {
@@ -82,17 +83,25 @@ public final class NowPlayingBridge {
         }
     }
 
-    /// Standard `withObservationTracking` re-arming pattern: read the
-    /// observed properties while pushing now-playing info, then re-register
-    /// on the next change. `isActive` is the guard that stops the loop from
-    /// re-arming once `deactivate()` has been called.
+    /// Re-arming `withObservationTracking` pattern, but the tracked scope
+    /// deliberately reads only DISCONTINUITY signals — current track,
+    /// play/pause state, and seekCount — NOT `currentTime`. The system
+    /// extrapolates elapsed time from PlaybackRate + one ElapsedPlaybackTime
+    /// timestamp, so re-pushing the whole info dict (an XPC write to
+    /// mediaserverd) on every 0.5s tick is pure waste; `pushNowPlayingInfo()`
+    /// runs OUTSIDE the tracked closure so its `currentTime` read registers
+    /// no dependency. `isActive` stops the loop after `deactivate()`.
     private func scheduleNowPlayingInfoUpdate() {
         guard isActive else { return }
         withObservationTracking {
-            pushNowPlayingInfo()
+            _ = player.current
+            _ = player.isPlaying
+            _ = player.seekCount
         } onChange: { [weak self] in
             Task { @MainActor in
-                self?.scheduleNowPlayingInfoUpdate()
+                guard let self, self.isActive else { return }
+                self.pushNowPlayingInfo()
+                self.scheduleNowPlayingInfoUpdate()
             }
         }
     }

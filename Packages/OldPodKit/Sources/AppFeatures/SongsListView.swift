@@ -57,9 +57,6 @@ public struct SongsListView: View {
                         )
                         .contentShape(Rectangle())
                         .onTapGesture {
-                            if !track.isDownloaded {
-                                DownloadRequester.requestDownload(of: resolvedURL(for: track))
-                            }
                             coordinator.player.play(coordinator.playableTracks(from: filteredTracks), startingAt: index)
                         }
                         .contextMenu {
@@ -144,10 +141,6 @@ public struct SongsListView: View {
         } label: {
             Label("Add to Playlist…", systemImage: "music.note.list")
         }
-    }
-
-    private func resolvedURL(for track: Track) -> URL {
-        coordinator.libraryRoot.appendingPathComponent(track.relativePath)
     }
 
     private static func matches(_ track: Track, query: String) -> Bool {

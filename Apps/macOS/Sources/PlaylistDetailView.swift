@@ -20,12 +20,23 @@ struct PlaylistDetailView: View {
     @Query private var allTracks: [Track]
     @State private var selection: Set<PersistentIdentifier> = []
 
+    init(playlist: Playlist, coordinator: LibraryCoordinator) {
+        self.playlist = playlist
+        self.coordinator = coordinator
+        // Only the tracks this playlist's entries actually reference (not
+        // every `Track` in the library).
+        let paths = Set(PlaylistOps.sortedEntries(of: playlist).map(\.trackPath))
+        _allTracks = Query(filter: #Predicate<Track> { paths.contains($0.relativePath) })
+    }
+
     private var entries: [PlaylistEntry] {
         PlaylistOps.sortedEntries(of: playlist)
     }
 
     /// One fetch turned into a dictionary, so resolving every entry's track
-    /// is a lookup rather than a per-row fetch (no N+1 query).
+    /// is a lookup rather than a per-row fetch (no N+1 query). Callers that
+    /// render should build this once per `body` and thread it through,
+    /// rather than reading this computed property from inside a per-row view.
     private var tracksByPath: [String: Track] {
         Dictionary(uniqueKeysWithValues: allTracks.map { ($0.relativePath, $0) })
     }
@@ -33,19 +44,21 @@ struct PlaylistDetailView: View {
     /// Entries that still resolve to a track, in playlist order — what's
     /// actually playable.
     private var resolvedEntries: [(entry: PlaylistEntry, track: Track)] {
+        resolvedEntries(tracksByPath: tracksByPath)
+    }
+
+    private func resolvedEntries(tracksByPath: [String: Track]) -> [(entry: PlaylistEntry, track: Track)] {
         entries.compactMap { entry in
             guard let track = tracksByPath[entry.trackPath] else { return nil }
             return (entry, track)
         }
     }
 
-    private var totalDuration: TimeInterval {
-        resolvedEntries.reduce(0) { $0 + $1.track.duration }
-    }
-
     var body: some View {
+        let tracksByPath = tracksByPath
+        let resolvedEntries = resolvedEntries(tracksByPath: tracksByPath)
         VStack(alignment: .leading, spacing: 0) {
-            header
+            header(resolvedEntries: resolvedEntries)
             Divider()
             if entries.isEmpty {
                 ContentUnavailableView(
@@ -55,13 +68,14 @@ struct PlaylistDetailView: View {
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                list
+                list(tracksByPath: tracksByPath)
             }
         }
     }
 
-    private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
+    private func header(resolvedEntries: [(entry: PlaylistEntry, track: Track)]) -> some View {
+        let totalDuration = resolvedEntries.reduce(0) { $0 + $1.track.duration }
+        return HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(playlist.name)
                     .font(.title2)
@@ -90,10 +104,10 @@ struct PlaylistDetailView: View {
         .padding(.vertical, 12)
     }
 
-    private var list: some View {
+    private func list(tracksByPath: [String: Track]) -> some View {
         List(selection: $selection) {
             ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
-                row(for: entry, position: index)
+                row(for: entry, position: index, tracksByPath: tracksByPath)
             }
             .onMove { source, destination in
                 PlaylistOps.moveEntries(from: source, to: destination, in: playlist, in: modelContext)
@@ -113,7 +127,7 @@ struct PlaylistDetailView: View {
         }
     }
 
-    private func row(for entry: PlaylistEntry, position: Int) -> some View {
+    private func row(for entry: PlaylistEntry, position: Int, tracksByPath: [String: Track]) -> some View {
         let track = tracksByPath[entry.trackPath]
         let isCurrent = track.map { coordinator.player.current?.relativePath == $0.relativePath } ?? false
 
@@ -168,10 +182,7 @@ struct PlaylistDetailView: View {
     private func shuffleAll() {
         let tracks = resolvedEntries.map(\.track)
         guard !tracks.isEmpty else { return }
-        coordinator.player.play(coordinator.playableTracks(from: tracks), startingAt: 0)
-        if !coordinator.player.isShuffled {
-            coordinator.player.toggleShuffle()
-        }
+        coordinator.player.playShuffled(coordinator.playableTracks(from: tracks))
     }
 
     /// Double-click: play the resolved (playable) entries, starting at the

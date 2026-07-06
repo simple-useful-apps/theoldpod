@@ -75,7 +75,7 @@ public struct NowPlayingView: View {
                     .rotationEffect(.degrees(-90))
             }
 
-            ArtworkImage(artworkID: current.artworkID, directory: artworkDirectory, cornerRadius: 16)
+            ArtworkImage(artworkID: current.artworkID, directory: artworkDirectory, cornerRadius: 16, pointSize: 320)
                 .padding(12)
         }
         .aspectRatio(1, contentMode: .fit)

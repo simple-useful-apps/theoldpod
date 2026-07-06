@@ -9,6 +9,7 @@ struct MetadataReaderTests {
         #expect(metadata.album == "Test Tones")
         #expect(metadata.trackNumber == 1)
         #expect(metadata.year == 2001)
+        #expect(metadata.genre == "Electronic")
         #expect(abs(metadata.duration - 3) < 0.5)
     }
 

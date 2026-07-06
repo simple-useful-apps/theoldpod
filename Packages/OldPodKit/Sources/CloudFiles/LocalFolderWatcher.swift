@@ -66,6 +66,9 @@ private actor WatcherEngine {
         debounceTask = nil
         continuation?.finish()
         continuation = nil
+        // Without this, a `changes()` call after `stop()` would see `started`
+        // still true and silently return an `AsyncStream` that never emits.
+        started = false
     }
 
     // MARK: - Scanning
@@ -104,8 +107,11 @@ private actor WatcherEngine {
             ) else { continue }
             if values.isDirectory == true { continue }
             guard url.pathExtension.lowercased() == "mp3" else { continue }
+            // The enumerator only ever yields URLs under `root`, so this
+            // should never actually be nil — but skip rather than crash if
+            // it somehow were.
+            guard let path = LibraryLocation.relativePath(of: url, under: root) else { continue }
 
-            let path = relativePath(for: url)
             let stat = LibraryFileStat(
                 size: Int64(values.fileSize ?? 0),
                 modified: values.contentModificationDate ?? Date(timeIntervalSince1970: 0),
@@ -128,15 +134,6 @@ private actor WatcherEngine {
             }
         }
         return directories
-    }
-
-    private func relativePath(for url: URL) -> String {
-        let rootPath = root.standardizedFileURL.path
-        let filePath = url.standardizedFileURL.path
-        guard filePath.hasPrefix(rootPath) else { return url.lastPathComponent }
-        var suffix = String(filePath.dropFirst(rootPath.count))
-        if suffix.hasPrefix("/") { suffix.removeFirst() }
-        return suffix
     }
 
     // MARK: - Watching

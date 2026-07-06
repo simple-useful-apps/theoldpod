@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 /// The outcome of an `ImportService.importFiles(at:)` call.
@@ -66,7 +67,12 @@ public struct ImportService: Sendable {
         while true {
             let destination = libraryRoot.appendingPathComponent(candidate)
             if let existingSize = fileSize(at: destination) {
-                if existingSize == sourceSize {
+                // Same size alone isn't proof of identical content, so also
+                // compare a content hash before treating this as a no-op:
+                // a same-name, same-size, *different*-content file should
+                // still get copied in under a suffixed name, not silently
+                // dropped.
+                if existingSize == sourceSize, filesAreIdentical(source, destination) {
                     // Identical file already present: treat as already imported.
                     return candidate
                 }
@@ -89,6 +95,19 @@ public struct ImportService: Sendable {
               let size = values.fileSize
         else { return nil }
         return Int64(size)
+    }
+
+    /// SHA-256 comparison of `lhs` and `rhs`'s full contents. `false` if
+    /// either can't be read (in which case the caller falls back to treating
+    /// them as distinct, i.e. the suffixed-name copy path).
+    private func filesAreIdentical(_ lhs: URL, _ rhs: URL) -> Bool {
+        guard let lhsDigest = sha256(at: lhs), let rhsDigest = sha256(at: rhs) else { return false }
+        return lhsDigest == rhsDigest
+    }
+
+    private func sha256(at url: URL) -> SHA256.Digest? {
+        guard let data = try? Data(contentsOf: url, options: .mappedIfSafe) else { return nil }
+        return SHA256.hash(data: data)
     }
 
     private func numberedFilename(_ filename: String, attempt: Int) -> String {

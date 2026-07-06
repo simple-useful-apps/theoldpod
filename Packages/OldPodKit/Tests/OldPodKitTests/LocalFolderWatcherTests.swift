@@ -85,6 +85,29 @@ struct LocalFolderWatcherTests {
         #expect(!upsertedPaths(changes).contains("delete-me.mp3"))
     }
 
+    /// Hardening for a stale `started` flag: after `stop()`, a later
+    /// `changes()` call must actually restart the watcher (a fresh initial
+    /// snapshot), not silently return a stream that never emits because
+    /// `started` was left `true` from the previous run.
+    @Test func changesAfterStopRestartsAndEmitsAFreshInitialSnapshot() async throws {
+        let root = try makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try placeFixture("cbr-tagged.mp3", in: root, at: "song1.mp3")
+
+        let watcher = LocalFolderWatcher(root: root)
+        let firstCollector = ChangeCollector(watcher.changes())
+        let first = try await firstCollector.next()
+        #expect(upsertedPaths(first) == ["song1.mp3"])
+
+        watcher.stop()
+
+        let secondCollector = ChangeCollector(watcher.changes())
+        defer { watcher.stop() }
+        let second = try await secondCollector.next()
+        #expect(upsertedPaths(second) == ["song1.mp3"])
+    }
+
     @Test func nonMP3AndHiddenFilesAreIgnored() async throws {
         let root = try makeTempDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -142,7 +165,9 @@ private func removedPaths(_ changes: [LibraryChange]) -> Set<String> {
 }
 
 private struct WatcherTimeout: Error, CustomStringConvertible {
-    var description: String { "Timed out waiting for a LocalFolderWatcher emission." }
+    var description: String {
+        "Timed out waiting for a LocalFolderWatcher emission."
+    }
 }
 
 /// Wraps an `AsyncStream` iterator so tests can await the next emission with

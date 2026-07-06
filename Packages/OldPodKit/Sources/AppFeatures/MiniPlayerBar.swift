@@ -22,7 +22,7 @@ public struct MiniPlayerBar: View {
                 .frame(height: 0.5)
 
             HStack(spacing: 12) {
-                ArtworkImage(artworkID: player.current?.artworkID, directory: artworkDirectory)
+                ArtworkImage(artworkID: player.current?.artworkID, directory: artworkDirectory, pointSize: 40)
                     .frame(width: 40, height: 40)
 
                 if let current = player.current {
@@ -43,12 +43,6 @@ public struct MiniPlayerBar: View {
                 }
 
                 Spacer(minLength: 12)
-
-                #if os(macOS)
-                    if player.current != nil {
-                        DurationText(player.currentTime)
-                    }
-                #endif
 
                 transportControls
             }

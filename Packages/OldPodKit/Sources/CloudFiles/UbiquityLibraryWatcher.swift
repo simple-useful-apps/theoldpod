@@ -76,6 +76,9 @@ public final class UbiquityLibraryWatcher: LibraryFolderWatching, Sendable {
         query = nil
         continuation?.finish()
         continuation = nil
+        // Without this, a `changes()` call after `stop()` would see `started`
+        // still true and silently return an `AsyncStream` that never emits.
+        started = false
     }
 
     private func handleGathering() {
@@ -126,13 +129,7 @@ public final class UbiquityLibraryWatcher: LibraryFolderWatching, Sendable {
     /// `nil` for items outside `musicRoot` (the query scans the whole
     /// container's `Documents`, not just our subfolder).
     private func relativePath(for url: URL) -> String? {
-        let rootPath = musicRoot.standardizedFileURL.path
-        let filePath = url.standardizedFileURL.path
-        // Match on a path-component boundary — a bare prefix check would also
-        // capture sibling folders like "Music Extra/".
-        guard filePath.hasPrefix(rootPath + "/") else { return nil }
-        let suffix = String(filePath.dropFirst(rootPath.count + 1))
-        return suffix.isEmpty ? nil : suffix
+        LibraryLocation.relativePath(of: url, under: musicRoot)
     }
 
     private func url(for path: String) -> URL {

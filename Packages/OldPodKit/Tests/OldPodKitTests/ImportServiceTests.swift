@@ -83,6 +83,36 @@ struct ImportServiceTests {
         #expect(thirdData == dataThree)
     }
 
+    @Test func sameNameSameSizeDifferentContentGetsANumberedNameRatherThanBeingSkipped() async throws {
+        let (sourceDirectory, root) = try makeTempDirectories()
+        defer { cleanUp(sourceDirectory, root) }
+
+        let original = fixtureData()
+        var modified = original
+        // Flip a byte partway through: same size as `original`, but
+        // different content (and therefore a different SHA-256), so this
+        // must NOT be treated as an already-imported duplicate.
+        let flipIndex = modified.count / 2
+        modified[flipIndex] = modified[flipIndex] &+ 1
+        #expect(modified.count == original.count)
+        #expect(modified != original)
+
+        _ = try writeFile(named: "Song.mp3", data: original, in: root)
+
+        let sourceURL = try writeFile(named: "Song.mp3", data: modified, in: sourceDirectory)
+        let service = ImportService(libraryRoot: root)
+        let result = await service.importFiles(at: [sourceURL])
+
+        #expect(result.imported == ["Song 2.mp3"])
+        #expect(result.skipped.isEmpty)
+
+        let originalOnDisk = try Data(contentsOf: root.appendingPathComponent("Song.mp3"))
+        #expect(originalOnDisk == original) // untouched
+
+        let numberedData = try Data(contentsOf: root.appendingPathComponent("Song 2.mp3"))
+        #expect(numberedData == modified)
+    }
+
     @Test func identicalSizeReImportDoesNotDuplicateButIsStillReportedImported() async throws {
         let (sourceDirectory, root) = try makeTempDirectories()
         defer { cleanUp(sourceDirectory, root) }

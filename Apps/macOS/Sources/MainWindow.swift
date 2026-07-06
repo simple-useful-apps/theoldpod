@@ -299,7 +299,7 @@ private struct AlbumsDetailView: View {
                     List(selection: $selectedAlbumID) {
                         ForEach(albums) { album in
                             HStack(spacing: 8) {
-                                ArtworkImage(artworkID: album.artworkID, directory: coordinator.artworkDirectory)
+                                ArtworkImage(artworkID: album.artworkID, directory: coordinator.artworkDirectory, pointSize: 56)
                                     .frame(width: 56, height: 56)
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(album.title)

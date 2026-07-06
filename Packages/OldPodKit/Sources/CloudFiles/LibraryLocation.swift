@@ -68,4 +68,18 @@ public enum LibraryLocation {
             ?? FileManager.default.temporaryDirectory
         return documents.appendingPathComponent("Music", isDirectory: true)
     }
+
+    /// `url`'s path relative to `root`, matched on a path-component
+    /// boundary — a bare `hasPrefix` check would also capture sibling
+    /// folders like "Music Extra/" when `root` is ".../Music". `nil` if
+    /// `url` isn't under `root` at all (or is `root` itself). Shared by
+    /// `LocalFolderWatcher` and `UbiquityLibraryWatcher` so both watchers
+    /// agree on how library-relative paths are derived.
+    public static func relativePath(of url: URL, under root: URL) -> String? {
+        let rootPath = root.standardizedFileURL.path
+        let filePath = url.standardizedFileURL.path
+        guard filePath.hasPrefix(rootPath + "/") else { return nil }
+        let suffix = String(filePath.dropFirst(rootPath.count + 1))
+        return suffix.isEmpty ? nil : suffix
+    }
 }

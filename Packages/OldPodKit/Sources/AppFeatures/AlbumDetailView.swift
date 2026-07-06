@@ -91,7 +91,7 @@ public struct AlbumDetailView: View {
 
     private func header(tracks: [Track]) -> some View {
         VStack(spacing: 12) {
-            ArtworkImage(artworkID: album.artworkID, directory: coordinator.artworkDirectory, cornerRadius: 8)
+            ArtworkImage(artworkID: album.artworkID, directory: coordinator.artworkDirectory, cornerRadius: 8, pointSize: 200)
                 .frame(width: 200, height: 200)
 
             VStack(spacing: 4) {
@@ -145,13 +145,9 @@ public struct AlbumDetailView: View {
         coordinator.player.play(coordinator.playableTracks(from: tracks), startingAt: 0)
     }
 
-    /// Plays the whole album, then ensures shuffle is on (never toggles it
-    /// off if it's already shuffled).
+    /// Plays the whole album shuffled, starting from a random track.
     private func shuffle(tracks: [Track]) {
-        coordinator.player.play(coordinator.playableTracks(from: tracks), startingAt: 0)
-        if !coordinator.player.isShuffled {
-            coordinator.player.toggleShuffle()
-        }
+        coordinator.player.playShuffled(coordinator.playableTracks(from: tracks))
     }
 }
 

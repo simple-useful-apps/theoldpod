@@ -1,4 +1,5 @@
 import AVFoundation
+import CloudFiles
 import Foundation
 import Observation
 import os
@@ -14,6 +15,10 @@ public final class PlayerController {
     public private(set) var isPlaying = false
     public private(set) var currentTime: TimeInterval = 0
     public private(set) var repeatMode: RepeatMode = .off
+    /// Bumped on every explicit seek. Lets observers (NowPlayingBridge) react
+    /// to playback-position DISCONTINUITIES without observing `currentTime`
+    /// itself, whose 0.5s ticks would otherwise fire them continuously.
+    public private(set) var seekCount = 0
 
     public var current: PlayableTrack? {
         queue.current
@@ -99,6 +104,19 @@ public final class PlayerController {
         beginPlayback()
     }
 
+    /// Plays the tracks shuffled, starting from a RANDOM track — the
+    /// iTunes/Music behavior every Shuffle button expects. (Plain `play` +
+    /// `toggleShuffle` would always start on the collection's first track,
+    /// because shuffling pins the current track at the head.)
+    public func playShuffled(_ tracks: [PlayableTrack]) {
+        guard !tracks.isEmpty else { return }
+        queue.replace(with: tracks, startingAt: Int.random(in: tracks.indices))
+        var generator = SystemRandomNumberGenerator()
+        queue.setShuffled(true, using: &generator)
+        syncPlayerItems(fullRebuild: true)
+        beginPlayback()
+    }
+
     public func togglePlayPause() {
         guard queue.current != nil else { return }
         if isPlaying {
@@ -133,6 +151,7 @@ public final class PlayerController {
         guard let current = queue.current else { return }
         let clamped = max(0, min(seconds, current.duration))
         currentTime = clamped
+        seekCount += 1
         let time = CMTime(seconds: clamped, preferredTimescale: 600)
         player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
     }
@@ -228,6 +247,13 @@ public final class PlayerController {
     }
 
     private func makeItem(for track: PlayableTrack) -> AVPlayerItem {
+        // Every play path funnels through here, so this is the one place that
+        // guarantees an undownloaded iCloud file gets its download kicked off
+        // — the item itself will fail (and be skipped) this time around, but
+        // the bytes arrive for the next attempt.
+        if !track.isDownloaded {
+            DownloadRequester.requestDownload(of: track.url)
+        }
         let item = AVPlayerItem(url: track.url)
         itemTracks[ObjectIdentifier(item)] = track.relativePath
         return item
@@ -310,8 +336,21 @@ public final class PlayerController {
 
     private func handleItemFailure(_ failedItemID: ObjectIdentifier?) {
         guard let failedItemID, itemTracks[failedItemID] != nil else { return }
-        Self.logger.error("AVPlayerItem failed to play to end; skipping to next track.")
-        next()
+        // A PRELOADED item can fail while the current one plays fine (bad
+        // file, undownloaded iCloud placeholder). Only skip when the failure
+        // is the item actually playing; otherwise just drop the bad preload —
+        // if playback reaches that track it will fail again as current and be
+        // skipped then.
+        if let current = player.currentItem, ObjectIdentifier(current) == failedItemID {
+            Self.logger.error("Playing item failed; skipping to next track.")
+            next()
+        } else {
+            Self.logger.error("Preloaded item failed; removing it from the player.")
+            for tail in player.items().dropFirst() where ObjectIdentifier(tail) == failedItemID {
+                player.remove(tail)
+            }
+            itemTracks.removeValue(forKey: failedItemID)
+        }
     }
 
     #if os(iOS)
