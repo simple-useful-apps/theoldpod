@@ -47,6 +47,10 @@ struct MacRootView: View {
                 detail
             }
         }
+        // Window minimum: toolbar + full-height player bar + a useful table.
+        // Below this, the fixed-height bar + split-view minimums exceed the
+        // window and the VStack spills up under the toolbar (clipped LCD).
+        .frame(minWidth: 720, minHeight: 520)
         .toolbar {
             ToolbarItem(placement: .automatic) {
                 if isImporting {

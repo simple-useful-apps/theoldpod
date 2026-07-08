@@ -21,8 +21,13 @@ struct PlayerBarView: View {
                 Spacer(minLength: 12)
                 rightCluster
             }
+            // Hard minimum: the LCD (title + artist + inline scrubber) needs
+            // ~54pt of content height; ideal-size negotiation under the
+            // unified toolbar shortchanges it and the title clips. An explicit
+            // minHeight is honored where fixedSize's ideal is not.
+            .frame(minHeight: 56)
             .padding(.horizontal, 16)
-            .padding(.vertical, 8)
+            .padding(.vertical, 6)
 
             Rectangle()
                 .fill(.quaternary)
@@ -68,7 +73,7 @@ struct PlayerBarView: View {
                 ArtworkImage(artworkID: current.artworkID, directory: artworkDirectory, pointSize: 40)
                     .frame(width: 40, height: 40)
 
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text(current.title)
                         .font(.callout)
                         .lineLimit(1)
@@ -80,7 +85,8 @@ struct PlayerBarView: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
 
-                    ScrubberView(player: player)
+                    ScrubberView(player: player, style: .inline)
+                        .controlSize(.small)
                 }
             }
             .frame(minWidth: 260, maxWidth: 440)
