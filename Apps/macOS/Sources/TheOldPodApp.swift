@@ -38,7 +38,11 @@ struct TheOldPodApp: App {
             if let coordinator {
                 NowPlayingView(player: coordinator.player, artworkDirectory: coordinator.artworkDirectory)
             } else {
+                // Full-size placeholder: with .windowResizability(.contentSize),
+                // a bare ProgressView would shrink a state-restored window to a
+                // ~48×92 speck until the library finishes loading.
                 ProgressView()
+                    .frame(width: 340, height: 480)
             }
         }
         .defaultSize(width: 340, height: 480)

@@ -33,13 +33,19 @@ struct MacRootView: View {
     }
 
     var body: some View {
-        NavigationSplitView {
-            sidebar
-        } detail: {
-            detail
-        }
-        .safeAreaInset(edge: .top, spacing: 0) {
+        // The bar is STACKED above the split view, not applied as a
+        // safeAreaInset — AppKit-backed containers (the HSplitViews in the
+        // Artists/Albums details) don't propagate SwiftUI safe-area insets,
+        // so inset content slid underneath the bar (first album row halfway
+        // hidden). Stacking makes underlap structurally impossible.
+        VStack(spacing: 0) {
             PlayerBarView(player: coordinator.player, artworkDirectory: coordinator.artworkDirectory)
+
+            NavigationSplitView {
+                sidebar
+            } detail: {
+                detail
+            }
         }
         .toolbar {
             ToolbarItem(placement: .automatic) {
