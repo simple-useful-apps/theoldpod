@@ -5,6 +5,7 @@ import LibraryStore
 import MetadataImport
 import NowPlaying
 import Observation
+import os
 import PlaybackEngine
 import SwiftData
 
@@ -12,6 +13,10 @@ import SwiftData
 /// cache, and folder watcher, and pumps file-system diffs into the indexer.
 /// Also owns the playback stack: the `PlayerController` and its
 /// `NowPlayingBridge` to the lock screen / Control Center / media keys.
+///
+/// Also owns playlist file sync: playlists live as `.m3u8` files under
+/// `<libraryRoot>/Playlists`, so the SwiftData store stays rebuildable from
+/// the library folder per `CLAUDE.md`, same as `Track`s.
 @MainActor
 @Observable
 public final class LibraryCoordinator {
@@ -23,6 +28,7 @@ public final class LibraryCoordinator {
 
     private let watcher: any LibraryFolderWatching
     private let artwork: ArtworkStore
+    private let playlistSync: PlaylistFileSync
     private var watchTask: Task<Void, Never>?
 
     /// Where `ArtworkStore` caches embedded artwork, for views (`ArtworkImage`,
@@ -47,6 +53,11 @@ public final class LibraryCoordinator {
         let player = PlayerController()
         self.player = player
         nowPlaying = NowPlayingBridge(player: player, artworkDirectory: artwork.directory)
+
+        let playlistsDirectory = libraryRoot.appendingPathComponent("Playlists", isDirectory: true)
+        let playlistSync = PlaylistFileSync(store: PlaylistFileStore(directory: playlistsDirectory), container: container)
+        self.playlistSync = playlistSync
+        PlaylistOps.fileSync = playlistSync
     }
 
     /// Resolves the library location (cloud if available, else the local
@@ -72,13 +83,19 @@ public final class LibraryCoordinator {
                 isCloudLibrary: resolved.isCloud
             )
         } catch {
+            // Surfaced in the UI only as the generic failure screen — the
+            // specifics land here (a silent catch hid a CloudKit-vs-SwiftData
+            // misconfiguration for a whole debugging session).
+            Logger(subsystem: "OldPodKit.AppFeatures", category: "LibraryCoordinator")
+                .fault("Library setup failed: \(error)")
             return nil
         }
     }
 
     /// Idempotent: starts a task consuming `watcher.changes()` into the
-    /// indexer, and activates the now-playing bridge. Calling this again
-    /// while already running is a no-op.
+    /// indexer, activates the now-playing bridge, and brings playlist file
+    /// sync online (one-time migration + reconcile, then live watching).
+    /// Calling this again while already running is a no-op.
     public func start() {
         guard watchTask == nil else { return }
         let container = container
@@ -86,11 +103,20 @@ public final class LibraryCoordinator {
         let watcher = watcher
         watchTask = Task {
             let indexer = LibraryIndexer(modelContainer: container, artwork: artwork)
+            // The stream's first emission is the watcher's full snapshot
+            // (LibraryFolderWatching contract). It is authoritative: rows for
+            // files that no longer exist under the CURRENT root are pruned,
+            // so switching roots (local → iCloud) can't leave a stale
+            // library behind. Later emissions are incremental diffs.
+            var isInitialSnapshot = true
             for await changes in watcher.changes() {
-                await indexer.apply(changes)
+                await indexer.apply(changes, reconcilingFullSnapshot: isInitialSnapshot)
+                isInitialSnapshot = false
             }
         }
         nowPlaying.activate()
+        playlistSync.migrateAndReconcile()
+        playlistSync.startWatching()
     }
 
     /// Snapshots SwiftData `Track`s into `PlayableTrack` values suitable for
@@ -126,6 +152,7 @@ public final class LibraryCoordinator {
         watcher.stop()
         watchTask?.cancel()
         watchTask = nil
+        playlistSync.stop()
     }
 
     private static func defaultArtworkDirectory() throws -> URL {

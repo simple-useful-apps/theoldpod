@@ -26,13 +26,27 @@ public actor LibraryIndexer {
         self.artwork = artwork
     }
 
-    public func apply(_ changes: [LibraryChange]) async {
+    /// `reconcilingFullSnapshot`: pass true when `changes` is a watcher's
+    /// complete initial snapshot — every stored `Track` whose file is absent
+    /// from it gets deleted, so the store can never outlive the folder it
+    /// indexes (e.g. after a local → iCloud library-root switch).
+    public func apply(_ changes: [LibraryChange], reconcilingFullSnapshot: Bool = false) async {
         for change in changes {
             switch change {
             case let .upsert(file):
                 await upsert(file)
             case let .remove(relativePath):
                 remove(relativePath: relativePath)
+            }
+        }
+        if reconcilingFullSnapshot {
+            let present = Set(changes.compactMap { change -> String? in
+                if case let .upsert(file) = change { return file.relativePath }
+                return nil
+            })
+            let all = (try? modelContext.fetch(FetchDescriptor<Track>())) ?? []
+            for track in all where !present.contains(track.relativePath) {
+                modelContext.delete(track)
             }
         }
         do {

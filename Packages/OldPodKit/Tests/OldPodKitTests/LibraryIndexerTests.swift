@@ -252,6 +252,36 @@ struct LibraryIndexerTests {
         #expect(track.title == "Fixture One")
         #expect(track.isDownloaded == true)
     }
+
+    @Test func initialSnapshotReconciliationPrunesTracksMissingFromTheSnapshot() async throws {
+        let (indexer, context, _, tempDirectory) = try makeIndexer()
+        defer { try? FileManager.default.removeItem(at: tempDirectory) }
+
+        let cbr = TestFixtures.url("cbr-tagged.mp3")
+        let vbr = TestFixtures.url("vbr-tagged.mp3")
+        let cbrFile = try LibraryFile(
+            relativePath: "cbr-tagged.mp3", url: cbr, size: fileSize(cbr), modified: fileModified(cbr)
+        )
+        let vbrFile = try LibraryFile(
+            relativePath: "vbr-tagged.mp3", url: vbr, size: fileSize(vbr), modified: fileModified(vbr)
+        )
+
+        // Seed a two-track store (e.g. from a previous library root).
+        await indexer.apply([.upsert(cbrFile), .upsert(vbrFile)])
+        #expect(try context.fetch(FetchDescriptor<Track>()).count == 2)
+
+        // A new session's INITIAL snapshot contains only one of them: the
+        // other's row must be pruned — the folder is the source of truth.
+        await indexer.apply([.upsert(cbrFile)], reconcilingFullSnapshot: true)
+        let tracks = try context.fetch(FetchDescriptor<Track>())
+        #expect(tracks.count == 1)
+        #expect(tracks.first?.relativePath == "cbr-tagged.mp3")
+
+        // A plain incremental batch must NOT prune (default behavior).
+        await indexer.apply([.upsert(vbrFile)])
+        await indexer.apply([.upsert(cbrFile)])
+        #expect(try context.fetch(FetchDescriptor<Track>()).count == 2)
+    }
 }
 
 private func makeIndexer() throws -> (
