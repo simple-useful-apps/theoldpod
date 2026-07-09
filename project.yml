@@ -35,10 +35,21 @@ targets:
         PRODUCT_NAME: TheOldPod
         TARGETED_DEVICE_FAMILY: "1"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        DEVELOPMENT_TEAM: Q565627PU8
+    entitlements:
+      path: Apps/iOS/TheOldPod-iOS.entitlements
+      properties:
+        com.apple.developer.icloud-services: [CloudDocuments]
+        com.apple.developer.icloud-container-identifiers: [iCloud.com.mattreed.theoldpod]
+        com.apple.developer.ubiquity-container-identifiers: [iCloud.com.mattreed.theoldpod]
     info:
       path: Apps/iOS/Info.plist
       properties:
         CFBundleDisplayName: theoldpod
+        # Bumped when NSUbiquitousContainers changed effect (the OS caches
+        # that dictionary per bundle version) — see docs/ICLOUD.md step 4.
+        CFBundleVersion: "2"
         UILaunchScreen: {}
         UIBackgroundModes: [audio]
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
@@ -97,19 +108,22 @@ targets:
       properties:
         com.apple.security.app-sandbox: true
         com.apple.security.files.user-selected.read-only: true
+        com.apple.developer.icloud-services: [CloudDocuments]
+        com.apple.developer.icloud-container-identifiers: [iCloud.com.mattreed.theoldpod]
+        com.apple.developer.ubiquity-container-identifiers: [iCloud.com.mattreed.theoldpod]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.mattreed.theoldpod.mac
         PRODUCT_NAME: TheOldPod
-        # Ad-hoc signing so unsigned dev builds run locally with the sandbox.
-        # Real signing (DEVELOPMENT_TEAM) arrives with iCloud entitlements in M5.
-        CODE_SIGN_IDENTITY: "-"
-        ENABLE_HARDENED_RUNTIME: false
+        DEVELOPMENT_TEAM: Q565627PU8
+        ENABLE_HARDENED_RUNTIME: true
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
     info:
       path: Apps/macOS/Info.plist
       properties:
         CFBundleDisplayName: theoldpod
+        CFBundleVersion: "2"
         LSApplicationCategoryType: public.app-category.music
         NSUbiquitousContainers:
           iCloud.com.mattreed.theoldpod:
