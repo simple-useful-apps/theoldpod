@@ -10,11 +10,11 @@ MP3 files in a folder are the database. A **watcher** turns filesystem events in
 
 ### 1. `Domain/` — the vocabulary (10 min)
 
-`Track.swift`, `Playlist.swift`, `PlaylistEntry.swift`. Three SwiftData models, nothing clever. Two deliberate choices to notice: artists/albums are **never stored** (they're derived groupings — see step 4), and `PlaylistEntry` references tracks by *string path*, not a relationship, so playlists survive files coming and going and could someday be exported as plain files.
+`Track.swift`, `Playlist.swift`, `PlaylistEntry.swift`. Three SwiftData models, nothing clever. Two deliberate choices to notice: artists/albums are **never stored** (they're derived groupings — see step 4), and `PlaylistEntry` references tracks by *string path*, not a relationship, so playlists survive files coming and going — and are exported as plain `.m3u8` files (see step 4's `PlaylistFileSync`).
 
 ### 2. `CloudFiles/` — files become diffs (30 min)
 
-Start with `LibraryChange.swift` (the diff vocabulary: upsert/remove of a `LibraryFile`) and `LibraryFolderWatching.swift` (the one protocol both watchers implement). Then `LibrarySnapshotDiff.swift` — the pure snapshot-comparison core, shared by both watchers and easy to unit test. Then the two implementations: `LocalFolderWatcher.swift` (DispatchSource + debounce + rescan; note the private actor holding all mutable state) and `UbiquityLibraryWatcher.swift` (the NSMetadataQuery/iCloud version — same protocol, so nothing downstream knows the difference). `LibraryLocation.swift` decides which one you get. `ImportService.swift` is a standalone: copy files in, dedupe by name+hash, let the watcher notice.
+Start with `LibraryChange.swift` (the diff vocabulary: upsert/remove of a `LibraryFile`) and `LibraryFolderWatching.swift` (the one protocol both watchers implement). Then `LibrarySnapshotDiff.swift` — the pure snapshot-comparison core, shared by both watchers and easy to unit test. Then the two implementations: `LocalFolderWatcher.swift` (DispatchSource + debounce + rescan; note the private actor holding all mutable state) and `UbiquityLibraryWatcher.swift` (the NSMetadataQuery/iCloud version — same protocol, so nothing downstream knows the difference). `LibraryLocation.swift` decides which one you get. `ImportService.swift` is a standalone: copy files in, dedupe by name+hash, let the watcher notice. Playlists get the same files-first treatment: `PlaylistFileFormat.swift` (pure `.m3u8` serialize/parse), `PlaylistFileStore.swift` (atomic file I/O under `Playlists/`), and `PlaylistFolderWatcher.swift` (a one-directory sibling of `LocalFolderWatcher`).
 
 ### 3. `MetadataImport/` + `LibraryStore/` — diffs become rows (20 min)
 
@@ -22,7 +22,7 @@ Start with `LibraryChange.swift` (the diff vocabulary: upsert/remove of a `Libra
 
 ### 4. `AppFeatures/LibraryCoordinator.swift` — where it's all wired (15 min)
 
-The composition root. `make()` resolves cloud-vs-local, builds the container/watcher/artwork store/player/now-playing bridge, and `start()` runs the pipeline: `for await changes in watcher.changes() { await indexer.apply(changes) }`. That one loop **is** the app's data flow. Also here: `LibraryGroups.swift` — how Artists and Albums exist without being stored (pure functions over `[Track]`), and `PlaylistOps.swift` — every playlist mutation in one place.
+The composition root. `make()` resolves cloud-vs-local, builds the container/watcher/artwork store/player/now-playing bridge, and `start()` runs the pipeline: `for await changes in watcher.changes() { await indexer.apply(changes) }`. That one loop **is** the app's data flow. Also here: `LibraryGroups.swift` — how Artists and Albums exist without being stored (pure functions over `[Track]`), `PlaylistOps.swift` — every playlist mutation in one place, and `PlaylistFileSync.swift` — the two-way bridge that makes `.m3u8` files under `Playlists/` the truth for playlists (ops write files after every save; startup and folder events reconcile SwiftData to match).
 
 ### 5. `PlaybackEngine/` — the soul (45 min, the best code in the repo)
 

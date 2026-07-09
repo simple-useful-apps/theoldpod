@@ -1,3 +1,4 @@
+import CloudFiles
 import Domain
 import Foundation
 import os
@@ -10,27 +11,41 @@ import SwiftData
 public enum PlaylistOps {
     private static let logger = Logger(subsystem: "OldPodKit.AppFeatures", category: "PlaylistOps")
 
-    /// Creates and inserts a new playlist. `name` is trimmed of leading/
-    /// trailing whitespace; an empty result becomes "New Playlist".
+    /// Set once at startup by `LibraryCoordinator`; tests may set/clear it to
+    /// observe (or suppress) the file-sync side effects of these mutations.
+    /// `nil` (the default) means playlist files aren't wired up — used by
+    /// tests that don't care about file sync at all.
+    public static var fileSync: PlaylistFileSync?
+
+    /// Creates and inserts a new playlist. `name` is normalized (see
+    /// `normalizedName`); an empty result becomes "New Playlist".
     @discardableResult
     public static func create(name: String, in context: ModelContext) -> Playlist {
-        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        let playlist = Playlist(name: trimmed.isEmpty ? "New Playlist" : trimmed)
+        let playlist = Playlist(name: normalizedName(name))
         context.insert(playlist)
         save(context)
+        fileSync?.playlistChanged(playlist, in: context)
         return playlist
     }
 
+    /// Renames `playlist`. `name` is normalized (see `normalizedName`); an
+    /// empty result becomes "New Playlist".
     public static func rename(_ playlist: Playlist, to name: String, in context: ModelContext) {
-        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        playlist.name = trimmed.isEmpty ? "New Playlist" : trimmed
+        let oldName = playlist.name
+        let newName = normalizedName(name)
+        playlist.name = newName
         save(context)
+        if newName != oldName {
+            fileSync?.playlistRenamed(from: oldName, to: playlist, in: context)
+        }
     }
 
     /// Deletes `playlist`; its entries cascade-delete via the relationship.
     public static func delete(_ playlist: Playlist, in context: ModelContext) {
+        let name = playlist.name
         context.delete(playlist)
         save(context)
+        fileSync?.playlistDeleted(named: name)
     }
 
     /// Appends a new entry referencing `track.relativePath` at the end of
@@ -41,6 +56,7 @@ public enum PlaylistOps {
         let entry = PlaylistEntry(position: nextPosition, trackPath: track.relativePath, playlist: playlist)
         context.insert(entry)
         save(context)
+        fileSync?.playlistChanged(playlist, in: context)
     }
 
     /// Removes the entries at `offsets` (indices into `sortedEntries(of:)`)
@@ -54,6 +70,7 @@ public enum PlaylistOps {
         }
         renumber(entries)
         save(context)
+        fileSync?.playlistChanged(playlist, in: context)
     }
 
     /// List-style reorder (matches `Array.move(fromOffsets:toOffset:)`
@@ -65,6 +82,7 @@ public enum PlaylistOps {
         entries.move(fromOffsets: source, toOffset: destination)
         renumber(entries)
         save(context)
+        fileSync?.playlistChanged(playlist, in: context)
     }
 
     public static func sortedEntries(of playlist: Playlist) -> [PlaylistEntry] {
@@ -83,6 +101,16 @@ public enum PlaylistOps {
     }
 
     // MARK: - Helpers
+
+    /// Trims whitespace/newlines, then strips every "/" and ":" character —
+    /// playlist names double as `.m3u8` filename stems for file sync (see
+    /// `PlaylistFileSync`), so they must be valid path components on both
+    /// platforms. An empty result becomes "New Playlist".
+    private static func normalizedName(_ name: String) -> String {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let stripped = trimmed.filter { $0 != "/" && $0 != ":" }
+        return stripped.isEmpty ? "New Playlist" : stripped
+    }
 
     private static func renumber(_ entries: [PlaylistEntry]) {
         for (index, entry) in entries.enumerated() {

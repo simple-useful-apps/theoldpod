@@ -12,7 +12,7 @@ Known items deliberately deferred from v1, mostly surfaced by the M6 full-codeba
 
 - **Repeat-mode toggle race** — toggling repeat at the exact moment a repeat-one track ends can audibly cut to the next track (the mismatch branch full-rebuilds mid-play). Rare, self-healing; fix by capturing repeatMode at end-event time.
 - **Download badge coverage** — undownloaded-track glyph shows in the Songs list and Mac table but not in album/playlist/artist rows. Extract a shared track-row trailing view.
-- **Playlists don't sync between devices** (by design in v1 — SwiftData is local-only). v2 path: export/import `.m3u8`-style files living in the library folder; `PlaylistEntry.trackPath` string references were chosen to keep this straightforward.
+- ~~Playlists don't sync between devices~~ — retired in v1.1: playlists now live as `.m3u8` files under `<libraryRoot>/Playlists` (`PlaylistFileSync`), so they ride along with whatever syncs the library folder. Known edges, all accepted: external file rename reads as delete+create (new `createdAt`); non-atomic in-place edits may not be noticed until next launch; same-name playlists merge on reconcile.
 
 ## Verification gaps
 
