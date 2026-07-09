@@ -53,6 +53,20 @@ targets:
             NSUbiquitousContainerName: "The Old Pod"
             NSUbiquitousContainerSupportedFolderLevels: Any
 
+  TheOldPod-MacUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    sources:
+      - Apps/macOS/UITests
+    dependencies:
+      - target: TheOldPod-macOS
+    settings:
+      base:
+        TEST_TARGET_NAME: TheOldPod-macOS
+        PRODUCT_BUNDLE_IDENTIFIER: com.mattreed.theoldpod.mac.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGN_IDENTITY: "-"
+
   TheOldPod-UITests:
     type: bundle.ui-testing
     platform: iOS
@@ -69,6 +83,9 @@ targets:
     type: application
     platform: macOS
     productName: TheOldPod
+    scheme:
+      testTargets:
+        - TheOldPod-MacUITests
     sources:
       - Apps/macOS/Sources
       - Apps/macOS/Resources

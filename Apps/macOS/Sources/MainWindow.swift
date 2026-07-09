@@ -91,6 +91,13 @@ struct MacRootView: View {
             Text("\(importSkippedCount ?? 0) file\((importSkippedCount ?? 0) == 1 ? "" : "s") couldn\u{2019}t be imported.")
         }
         .task {
+            // UI-test hook: deleting playlists through the real UI proved
+            // flaky (AX hittability), so the suite resets state at launch.
+            if ProcessInfo.processInfo.arguments.contains("--uitest-reset-playlists") {
+                for playlist in playlists {
+                    PlaylistOps.delete(playlist, in: modelContext)
+                }
+            }
             coordinator.start()
         }
     }
@@ -265,6 +272,12 @@ private struct ArtistsDetailView: View {
                             .tag(artist.id)
                         }
                     }
+                    // UI tests: an artist name (e.g. "The Fixtures") also
+                    // appears verbatim in the Artist column of the
+                    // SongsTableView right beside this list, so a bare label
+                    // lookup for the row is ambiguous — this identifier lets
+                    // tests scope the query to just this list.
+                    .accessibilityIdentifier("artistsList")
                 }
             }
             .frame(minWidth: 200, idealWidth: 220, maxWidth: 320)
@@ -322,6 +335,11 @@ private struct AlbumsDetailView: View {
                             .tag(album.id)
                         }
                     }
+                    // UI tests: an album title (e.g. "Covered") also appears
+                    // verbatim in the Album column of the SongsTableView
+                    // right beside this list — see the matching comment on
+                    // `artistsList` above.
+                    .accessibilityIdentifier("albumsList")
                 }
             }
             .frame(minWidth: 240, idealWidth: 260, maxWidth: 340)

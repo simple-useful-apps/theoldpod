@@ -3,7 +3,7 @@ DD  := .build/DerivedData
 IOS_APP := $(DD)/Build/Products/Debug-iphonesimulator/TheOldPod.app
 MAC_APP := $(DD)/Build/Products/Debug/TheOldPod.app
 
-.PHONY: gen test ios run-ios screenshot uitest mac run-mac clean
+.PHONY: gen test ios run-ios screenshot uitest mac-uitest mac run-mac clean
 
 gen:
 	xcodegen generate
@@ -30,6 +30,11 @@ uitest:
 		-destination 'platform=iOS Simulator,name=$(SIM)' \
 		-derivedDataPath $(DD) test CODE_SIGNING_ALLOWED=NO \
 		-only-testing:TheOldPod-UITests
+
+mac-uitest:
+	xcodebuild -project TheOldPod.xcodeproj -scheme TheOldPod-macOS \
+		-derivedDataPath $(DD) test \
+		-only-testing:TheOldPod-MacUITests
 
 mac:
 	xcodebuild -project TheOldPod.xcodeproj -scheme TheOldPod-macOS \

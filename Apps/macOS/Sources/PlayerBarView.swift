@@ -74,9 +74,15 @@ struct PlayerBarView: View {
                     .frame(width: 40, height: 40)
 
                 VStack(alignment: .leading, spacing: 2) {
+                    // Identified for UI tests: the same title text is also
+                    // visible in the Songs table row behind the bar once
+                    // something is playing, so a bare label lookup is
+                    // ambiguous — this identifier disambiguates it, the same
+                    // way iOS's mini player uses "miniPlayerTitle".
                     Text(current.title)
                         .font(.callout)
                         .lineLimit(1)
+                        .accessibilityIdentifier("playerBarTitle")
                     Text(
                         "\(current.artist.isEmpty ? "Unknown Artist" : current.artist) · " +
                             (current.album.isEmpty ? "Unknown Album" : current.album)

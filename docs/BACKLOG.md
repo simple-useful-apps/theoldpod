@@ -14,10 +14,10 @@ Known items deliberately deferred from v1, mostly surfaced by the M6 full-codeba
 - **Download badge coverage** — undownloaded-track glyph shows in the Songs list and Mac table but not in album/playlist/artist rows. Extract a shared track-row trailing view.
 - **Playlists don't sync between devices** (by design in v1 — SwiftData is local-only). v2 path: export/import `.m3u8`-style files living in the library folder; `PlaylistEntry.trackPath` string references were chosen to keep this straightforward.
 
-## Verification gaps (from the exploratory-testing session)
+## Verification gaps
 
-- **Mac right-click context menus** (songs table, playlist rows) resist synthetic events — NSMenu tracking wants real HID input. One human right-click confirms them; a Mac XCUITest target (mirroring `Apps/iOS/UITests`) is the automated fix and would also give trusted double-click/menu events for future Mac exploration.
-- **VoiceOver on the Mac**: explicit `.accessibilityLabel`s are on all transport buttons and the playlist "+" now, and the same shared views verify labeled on iOS — but System Events' legacy AX bridge is too lossy to confirm on macOS (some SwiftUI buttons surface unlabeled, some not at all). One ⌘F5 VoiceOver pass, or the Mac XCUITest target above, settles it.
+- **VoiceOver on the Mac**: explicit `.accessibilityLabel`s are on all transport buttons and the playlist "+", and the Mac XCUITest suite drives everything through the accessibility layer — but a human ⌘F5 VoiceOver listen remains the gold standard for reading order and announcements.
+- ~~Mac right-click context menus~~ — retired: `make mac-uitest` drives them with trusted events (Play / Play Next / Add to Playlist submenu all verified, triple-green).
 
 ## Test health
 
