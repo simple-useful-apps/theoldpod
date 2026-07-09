@@ -1,0 +1,55 @@
+# CI: package tests + unsigned builds of both app targets.
+# Deliberately lean (private repo, 10x macOS minute multiplier):
+# one job, no simulator UI tests — those stay local via `make uitest` / `make mac-uitest`.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: macos-26
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      # Deployment targets are iOS/macOS 26.0 — require an Xcode 26 toolchain.
+      - name: Select Xcode 26
+        run: |
+          sudo xcode-select -s "$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)"
+          xcodebuild -version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Cache SPM build artifacts
+        uses: actions/cache@v4
+        with:
+          path: Packages/OldPodKit/.build
+          key: spm-${{ runner.os }}-xcode26-${{ hashFiles('Packages/OldPodKit/Package.swift') }}
+          restore-keys: |
+            spm-${{ runner.os }}-xcode26-
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Package tests
+        run: swift test --package-path Packages/OldPodKit
+
+      - name: Build iOS app (unsigned)
+        run: |
+          xcodebuild -project TheOldPod.xcodeproj -scheme TheOldPod-iOS \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath .build/DerivedData build CODE_SIGNING_ALLOWED=NO
+
+      - name: Build Mac app (unsigned)
+        run: |
+          xcodebuild -project TheOldPod.xcodeproj -scheme TheOldPod-macOS \
+            -derivedDataPath .build/DerivedData build CODE_SIGNING_ALLOWED=NO
