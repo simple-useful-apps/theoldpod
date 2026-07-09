@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- App Store export options for the iOS app. Used by scripts/testflight.sh.
+     Automatic signing mints the distribution cert + App Store profile on
+     first use (needs the App Store Connect app record to already exist). -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>method</key>
+    <string>app-store-connect</string>
+    <key>destination</key>
+    <string>upload</string>
+    <key>teamID</key>
+    <string>Q565627PU8</string>
+    <key>signingStyle</key>
+    <string>automatic</string>
+    <key>uploadSymbols</key>
+    <true/>
+</dict>
+</plist>

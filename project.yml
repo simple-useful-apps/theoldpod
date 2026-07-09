@@ -50,6 +50,7 @@ targets:
         # Bumped when NSUbiquitousContainers changed effect (the OS caches
         # that dictionary per bundle version) — see docs/ICLOUD.md step 4.
         CFBundleVersion: "2"
+        CFBundleShortVersionString: "1.0"
         UILaunchScreen: {}
         UIBackgroundModes: [audio]
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
@@ -124,6 +125,7 @@ targets:
       properties:
         CFBundleDisplayName: theoldpod
         CFBundleVersion: "2"
+        CFBundleShortVersionString: "1.0"
         LSApplicationCategoryType: public.app-category.music
         NSUbiquitousContainers:
           iCloud.com.mattreed.theoldpod:
