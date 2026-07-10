@@ -18,6 +18,11 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# Put Apple's /usr/bin ahead of Homebrew: Xcode's IPA-packaging step shells
+# out to rsync, and a newer Homebrew rsync (3.4.x) rejects its arguments with
+# "rsync error: syntax or usage error (code 1)" → "Copy failed" on export.
+export PATH="/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+
 PLATFORM="${1:-}"
 case "$PLATFORM" in
   ios)

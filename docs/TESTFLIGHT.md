@@ -6,7 +6,7 @@ Everything on the build side is staged (`scripts/testflight.sh`, export plists, 
 
 1. **Accept agreements** — appstoreconnect.apple.com → Business/Agreements. A free app needs only the free-apps agreement; no banking or tax forms. *This silently blocks the first upload if skipped.*
 2. **Create the app record** — App Store Connect → Apps → **+ New App**. Platform iOS (do iOS first), name "theoldpod", primary language, bundle ID **com.mattreed.theoldpod**, SKU anything (e.g. `theoldpod-ios`). The Mac app is a separate record with **com.mattreed.theoldpod.mac** when you're ready for it.
-3. **Upload auth** — one time, so `scripts/testflight.sh` can upload headlessly. Easiest: App Store Connect → Users and Access → Integrations → **App Store Connect API** → generate a key, then `xcrun notarytool store-credentials` (or set the key in Xcode's Accounts). Alternatively an app-specific password from appleid.apple.com.
+3. **Upload auth** — App Store Connect → Users and Access → Integrations → **App Store Connect API** → generate a key. **Give it the Admin role** — App Manager can upload but can't create the distribution certificate/profile that automatic signing needs on a fresh account, and you'll hit "Cloud signing permission error." Download the `.p8` (one-time), note the Key ID (it's in the filename `AuthKey_<KEYID>.p8`) and the Issuer ID (top of the Keys page). Key roles can't be edited after creation — regenerate if wrong.
 
 ## Per build
 
@@ -23,3 +23,4 @@ Everything on the build side is staged (`scripts/testflight.sh`, export plists, 
 - **Deployment target is iOS 26 / macOS 26** — only devices on those OSes can install. Lower it in `project.yml` (`options.deploymentTarget`) to widen the pool.
 - **iOS icon** is the single 1024 App Store icon (present). Mac icon set is present.
 - First distribution cert occasionally needs one approval in Xcode → Settings → Accounts → Manage Certificates → **+ Apple Distribution**, if CLI signing balks.
+- **Homebrew rsync breaks export** — a newer `rsync` on PATH (Homebrew 3.4.x) fails Xcode's IPA packaging with "Copy failed". `scripts/testflight.sh` prepends `/usr/bin` to dodge it; if you export by hand, do the same.
