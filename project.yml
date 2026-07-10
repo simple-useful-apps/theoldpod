@@ -114,7 +114,10 @@ targets:
         com.apple.developer.ubiquity-container-identifiers: [iCloud.com.mattreed.theoldpod]
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.mattreed.theoldpod.mac
+        # Same bundle ID as the iOS app on purpose: one App Store Connect
+        # record hosts both platforms (a unified "iPhone + Mac" listing).
+        # A single App ID can back both an iOS and a macOS app.
+        PRODUCT_BUNDLE_IDENTIFIER: com.mattreed.theoldpod
         PRODUCT_NAME: TheOldPod
         DEVELOPMENT_TEAM: Q565627PU8
         ENABLE_HARDENED_RUNTIME: true

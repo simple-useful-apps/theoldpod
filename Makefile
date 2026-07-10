@@ -33,12 +33,12 @@ uitest:
 
 mac-uitest:
 	xcodebuild -project TheOldPod.xcodeproj -scheme TheOldPod-macOS \
-		-derivedDataPath $(DD) test \
+		-derivedDataPath $(DD) test -allowProvisioningUpdates \
 		-only-testing:TheOldPod-MacUITests
 
 mac:
 	xcodebuild -project TheOldPod.xcodeproj -scheme TheOldPod-macOS \
-		-derivedDataPath $(DD) build
+		-derivedDataPath $(DD) build -allowProvisioningUpdates
 
 run-mac: mac
 	open $(MAC_APP)
