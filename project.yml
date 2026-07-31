@@ -47,9 +47,11 @@ targets:
       path: Apps/iOS/Info.plist
       properties:
         CFBundleDisplayName: theoldpod
+        CFBundleIconName: AppIcon
         # Bumped when NSUbiquitousContainers changed effect (the OS caches
         # that dictionary per bundle version) — see docs/ICLOUD.md step 4.
-        CFBundleVersion: "2"
+        # Also bumped to 3 for the first TestFlight upload (2 already used).
+        CFBundleVersion: "3"
         CFBundleShortVersionString: "1.0"
         UILaunchScreen: {}
         UIBackgroundModes: [audio]
