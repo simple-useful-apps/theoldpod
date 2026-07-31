@@ -21,7 +21,7 @@ public struct ArtistsListView: View {
                 ContentUnavailableView(
                     "No Artists Yet",
                     systemImage: "music.mic",
-                    description: Text("Drop MP3s into\n\(coordinator.libraryRoot.path)")
+                    description: Text("Drop music files into\n\(coordinator.libraryRoot.path)")
                 )
             } else {
                 List(artists) { artist in

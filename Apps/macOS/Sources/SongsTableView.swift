@@ -72,7 +72,7 @@ struct SongsTableView: View {
                 ContentUnavailableView(
                     "No Music Yet",
                     systemImage: "music.note",
-                    description: Text("Drop MP3s into\n\(coordinator.libraryRoot.path)")
+                    description: Text("Drop music files into\n\(coordinator.libraryRoot.path)")
                 )
             } else {
                 let rows = visibleRows

@@ -1,8 +1,8 @@
-# theoldpod
+# The Old Pod
 
 A music player for people who own their music.
 
-theoldpod is a pair of apps — iPhone and Mac — that play the MP3s you already have. There is no store, no streaming, no account to create, no ads, and no server anywhere. Your library is a folder of files; iCloud Drive keeps the two apps looking at the same folder. Drag an album in from the Finder and it's on your phone.
+The Old Pod is a pair of apps — iPhone and Mac — that play the MP3s you already have. There is no store, no streaming, no account to create, no ads, and no server anywhere. Your library is a folder of files; iCloud Drive keeps the two apps looking at the same folder. Drag an album in from the Finder and it's on your phone.
 
 It works the way music software used to: Artists, Albums, Songs, Playlists. Pick something. It plays.
 

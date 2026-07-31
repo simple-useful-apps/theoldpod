@@ -1,6 +1,6 @@
 import Foundation
 
-/// Watches a local folder (recursively) for `*.mp3` files using
+/// Watches a local folder (recursively) for supported audio files using
 /// `DispatchSource` file-system-object sources on the root and every
 /// subdirectory. File events are debounced and coalesced into a rescan that's
 /// diffed against the previous snapshot.
@@ -106,7 +106,7 @@ private actor WatcherEngine {
                 forKeys: [.isDirectoryKey, .fileSizeKey, .contentModificationDateKey]
             ) else { continue }
             if values.isDirectory == true { continue }
-            guard url.pathExtension.lowercased() == "mp3" else { continue }
+            guard AudioFileSupport.supports(url) else { continue }
             // The enumerator only ever yields URLs under `root`, so this
             // should never actually be nil — but skip rather than crash if
             // it somehow were.

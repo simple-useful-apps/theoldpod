@@ -4,7 +4,7 @@ Working copy for both listings. Character limits noted where App Store Connect e
 
 ## Name (30 chars max)
 
-> theoldpod
+> The Old Pod
 
 ## Subtitle (30 chars max)
 
@@ -20,7 +20,7 @@ Working copy for both listings. Character limits noted where App Store Connect e
 
 ## Description — iOS
 
-> theoldpod plays the MP3s you already have.
+> The Old Pod plays the MP3s you already have.
 >
 > There is no store, no streaming service, no account to create, and no ads. Your library is a folder of files in your iCloud Drive. Add music from your Mac and it appears on your iPhone; delete a file and it's gone. The files are the truth — the app is just a good way to play them.
 >

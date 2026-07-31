@@ -46,7 +46,7 @@ targets:
     info:
       path: Apps/iOS/Info.plist
       properties:
-        CFBundleDisplayName: theoldpod
+        CFBundleDisplayName: The Old Pod
         CFBundleIconName: AppIcon
         # Bumped when NSUbiquitousContainers changed effect (the OS caches
         # that dictionary per bundle version) — see docs/ICLOUD.md step 4.
@@ -128,7 +128,7 @@ targets:
     info:
       path: Apps/macOS/Info.plist
       properties:
-        CFBundleDisplayName: theoldpod
+        CFBundleDisplayName: The Old Pod
         CFBundleVersion: "2"
         CFBundleShortVersionString: "1.0"
         LSApplicationCategoryType: public.app-category.music

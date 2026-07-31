@@ -24,7 +24,7 @@ public struct AlbumsGridView: View {
                 ContentUnavailableView(
                     "No Albums Yet",
                     systemImage: "square.stack",
-                    description: Text("Drop MP3s into\n\(coordinator.libraryRoot.path)")
+                    description: Text("Drop music files into\n\(coordinator.libraryRoot.path)")
                 )
             } else {
                 ScrollView {

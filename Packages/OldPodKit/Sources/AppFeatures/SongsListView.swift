@@ -10,7 +10,7 @@ import UniformTypeIdentifiers
 /// case/diacritic-insensitive search over title/artist/album. Tapping a row
 /// plays the whole visible list starting at that row; long-press offers
 /// Play Next / Add to Queue / Add to Playlist; the toolbar button imports
-/// `.mp3` files into the library folder.
+/// supported audio files into the library folder.
 public struct SongsListView: View {
     @Query(sort: \Track.title) private var tracks: [Track]
     @State private var searchText = ""
@@ -41,7 +41,7 @@ public struct SongsListView: View {
                 ContentUnavailableView(
                     "No Music Yet",
                     systemImage: "music.note",
-                    description: Text("Drop MP3s into\n\(coordinator.libraryRoot.path)")
+                    description: Text("Drop music files into\n\(coordinator.libraryRoot.path)")
                 )
             } else if filteredTracks.isEmpty {
                 ContentUnavailableView.search(text: searchText)
@@ -84,7 +84,7 @@ public struct SongsListView: View {
         }
         .fileImporter(
             isPresented: $isPresentingFileImporter,
-            allowedContentTypes: [UTType.mp3],
+            allowedContentTypes: [.mp3, .mpeg4Audio],
             allowsMultipleSelection: true
         ) { result in
             guard case let .success(urls) = result else { return }

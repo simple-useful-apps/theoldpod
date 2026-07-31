@@ -22,7 +22,7 @@ struct ImportServiceTests {
         #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent("Track.mp3").path))
     }
 
-    @Test func rejectsNonMp3Extensions() async throws {
+    @Test func importsM4AAndRejectsUnsupportedExtensions() async throws {
         let (sourceDirectory, root) = try makeTempDirectories()
         defer { cleanUp(sourceDirectory, root) }
 
@@ -32,9 +32,9 @@ struct ImportServiceTests {
         let service = ImportService(libraryRoot: root)
         let result = await service.importFiles(at: [textURL, m4aURL])
 
-        #expect(result.imported.isEmpty)
-        #expect(Set(result.skipped) == ["notes.txt", "song.m4a"])
-        #expect(try FileManager.default.contentsOfDirectory(atPath: root.path).isEmpty)
+        #expect(result.imported == ["song.m4a"])
+        #expect(result.skipped == ["notes.txt"])
+        #expect(try FileManager.default.contentsOfDirectory(atPath: root.path) == ["song.m4a"])
     }
 
     @Test func collisionWithDifferentSizeGetsANumberedName() async throws {

@@ -1,5 +1,5 @@
 #!/bin/zsh
-# Regenerates the test-fixture MP3s. Requires ffmpeg (brew install ffmpeg).
+# Regenerates the test audio fixtures. Requires ffmpeg (brew install ffmpeg).
 # All audio is synthesized sine tones — no copyrighted material.
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -35,5 +35,13 @@ rm cover.png
 ffmpeg -y -f lavfi -i "sine=frequency=330:duration=3" \
   -codec:a libmp3lame -b:a 128k -map_metadata -1 -write_id3v2 0 -write_xing 1 \
   untagged.mp3
+
+# AAC in an MPEG-4 audio container, with standard iTunes-style metadata
+ffmpeg -y -f lavfi -i "sine=frequency=784:duration=3" \
+  -codec:a aac -b:a 128k \
+  -metadata title="Fixture M4A" -metadata artist="The Fixtures" \
+  -metadata album="Test Tones" -metadata track="4/4" -metadata date="2001" \
+  -metadata genre="Electronic" \
+  m4a-tagged.m4a
 
 echo "Fixtures regenerated."

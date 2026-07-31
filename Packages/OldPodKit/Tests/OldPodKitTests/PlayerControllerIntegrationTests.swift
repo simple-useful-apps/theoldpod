@@ -3,26 +3,26 @@ import PlaybackEngine
 import Testing
 
 /// Exercises `PlayerController` against a real `AVQueuePlayer` decoding the
-/// repo's fixture MP3s (each ~3.03s per `afinfo`), to verify actual decode,
+/// repo's fixture audio files (each ~3.03s), to verify actual decode,
 /// preload-based auto-advance through the queue, and end-of-queue stopping —
 /// behavior that's meaningless to fake with a mock player. Every wait below
 /// is bounded (deadline-based polling, no bare sleeps) so a regression fails
 /// fast instead of hanging.
 @MainActor
 struct PlayerControllerIntegrationTests {
-    @Test func playingStartsPlaybackAndAdvancesCurrentTime() async throws {
+    @Test func playingM4AStartsPlaybackAndAdvancesCurrentTime() async throws {
         let controller = PlayerController()
-        let cbr = try await makePlayableTrack(fixture: "cbr-tagged.mp3")
+        let m4a = try await makePlayableTrack(fixture: "m4a-tagged.m4a")
         let vbr = try await makePlayableTrack(fixture: "vbr-tagged.mp3")
 
-        controller.play([cbr, vbr])
+        controller.play([m4a, vbr])
 
         try await poll(timeout: .seconds(2)) {
             controller.isPlaying && controller.currentTime > 0
         }
 
         #expect(controller.isPlaying)
-        #expect(controller.current == cbr)
+        #expect(controller.current == m4a)
 
         controller.stop()
     }

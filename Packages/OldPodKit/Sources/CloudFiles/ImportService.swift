@@ -5,7 +5,7 @@ import Foundation
 public struct ImportResult: Sendable, Equatable {
     /// Relative paths created (or already present) under the library root.
     public let imported: [String]
-    /// Source filenames rejected (not `.mp3`) or that failed to copy.
+    /// Source filenames rejected as unsupported or that failed to copy.
     public let skipped: [String]
 }
 
@@ -23,7 +23,7 @@ public struct ImportService: Sendable {
     }
 
     /// Copies the given files into the library root, flat (no subfolders
-    /// invented). Only `.mp3` (case-insensitive) files are accepted.
+    /// invented). Supported extensions are matched case-insensitively.
     public func importFiles(at urls: [URL]) async -> ImportResult {
         if !fileManager.fileExists(atPath: libraryRoot.path) {
             try? fileManager.createDirectory(at: libraryRoot, withIntermediateDirectories: true)
@@ -34,7 +34,7 @@ public struct ImportService: Sendable {
 
         for url in urls {
             let filename = url.lastPathComponent
-            guard url.pathExtension.lowercased() == "mp3" else {
+            guard AudioFileSupport.supports(url) else {
                 skipped.append(filename)
                 continue
             }

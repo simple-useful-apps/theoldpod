@@ -1,6 +1,6 @@
 import Foundation
 
-/// Watches the app's default ubiquity container for MP3 files using
+/// Watches the app's default ubiquity container for supported audio files using
 /// `NSMetadataQuery`. All query state lives on the main actor (Apple's
 /// documented home for `NSMetadataQuery`); `changes()`/`stop()` are
 /// `nonisolated` so this satisfies `LibraryFolderWatching`'s plain (not
@@ -46,7 +46,11 @@ public final class UbiquityLibraryWatcher: LibraryFolderWatching, Sendable {
 
         let query = NSMetadataQuery()
         query.searchScopes = [NSMetadataQueryUbiquitousDocumentsScope]
-        query.predicate = NSPredicate(format: "%K LIKE[c] '*.mp3'", NSMetadataItemFSNameKey)
+        query.predicate = NSPredicate(
+            format: "%K LIKE[c] '*.mp3' OR %K LIKE[c] '*.m4a'",
+            NSMetadataItemFSNameKey,
+            NSMetadataItemFSNameKey
+        )
         self.query = query
 
         let center = NotificationCenter.default
@@ -108,6 +112,7 @@ public final class UbiquityLibraryWatcher: LibraryFolderWatching, Sendable {
         var result: [String: LibraryFileStat] = [:]
         for case let item as NSMetadataItem in query.results {
             guard let url = item.value(forAttribute: NSMetadataItemURLKey) as? URL,
+                  AudioFileSupport.supports(url),
                   let path = relativePath(for: url)
             else { continue }
 

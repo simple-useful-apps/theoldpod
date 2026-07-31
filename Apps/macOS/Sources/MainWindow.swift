@@ -9,7 +9,7 @@ import UniformTypeIdentifiers
 /// The Mac window's root: a sidebar (Songs/Artists/Albums, plus user
 /// playlists) and a detail pane, with the persistent player bar pinned to the
 /// very top of the whole window — spanning sidebar and detail alike, the way
-/// iTunes' transport bar always sat above everything else. Also owns MP3
+/// iTunes' transport bar always sat above everything else. Also owns music
 /// import: a toolbar button and window-wide drag-and-drop, both funneled
 /// through `ImportService`.
 struct MacRootView: View {
@@ -64,12 +64,12 @@ struct MacRootView: View {
                 } label: {
                     Label("Import", systemImage: "square.and.arrow.down")
                 }
-                .help("Import MP3s into the library")
+                .help("Import music files into the library")
             }
         }
         .fileImporter(
             isPresented: $isImporterPresented,
-            allowedContentTypes: [.mp3],
+            allowedContentTypes: [.mp3, .mpeg4Audio],
             allowsMultipleSelection: true
         ) { result in
             if case let .success(urls) = result {
@@ -258,7 +258,7 @@ private struct ArtistsDetailView: View {
                     ContentUnavailableView(
                         "No Artists Yet",
                         systemImage: "music.mic",
-                        description: Text("Drop MP3s into\n\(coordinator.libraryRoot.path)")
+                        description: Text("Drop music files into\n\(coordinator.libraryRoot.path)")
                     )
                 } else {
                     List(selection: $selectedArtistID) {
@@ -315,7 +315,7 @@ private struct AlbumsDetailView: View {
                     ContentUnavailableView(
                         "No Albums Yet",
                         systemImage: "square.stack",
-                        description: Text("Drop MP3s into\n\(coordinator.libraryRoot.path)")
+                        description: Text("Drop music files into\n\(coordinator.libraryRoot.path)")
                     )
                 } else {
                     List(selection: $selectedAlbumID) {

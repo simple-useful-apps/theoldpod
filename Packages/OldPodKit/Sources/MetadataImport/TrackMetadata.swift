@@ -1,6 +1,6 @@
 import Foundation
 
-/// Metadata read from an audio file's ID3 tags, prior to being merged with
+/// Metadata read from an audio file's embedded tags, prior to being merged with
 /// filename/file-attribute fallbacks by the indexer.
 public struct TrackMetadata: Sendable, Equatable {
     public var title: String?
