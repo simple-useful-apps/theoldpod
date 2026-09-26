@@ -22,9 +22,13 @@ public struct PlayableTrack: Sendable, Equatable, Identifiable {
         AudiobookPath.bookID(for: relativePath)
     }
 
+    public var displayArtist: String {
+        artist.isEmpty ? "Unknown Artist" : artist
+    }
+
     public var subtitle: String {
         if bookID != nil { return artist.isEmpty ? album : "\(artist) · \(album)" }
-        return "\(artist.isEmpty ? "Unknown Artist" : artist) · \(album.isEmpty ? "Unknown Album" : album)"
+        return "\(displayArtist) · \(album.isEmpty ? "Unknown Album" : album)"
     }
 
     public init(

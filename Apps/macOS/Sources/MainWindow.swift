@@ -196,46 +196,28 @@ private struct ArtistsDetailView: View {
     @State private var selectedArtistID: String?
     @State private var searchText = ""
 
+    private static func matches(_ artist: ArtistGroup, _ query: String) -> Bool {
+        artist.name.localizedStandardContains(query)
+    }
+
     var body: some View {
-        // Grouped once per body evaluation — reading a computed property from
-        // the empty-check, the List, AND the filter would regroup the whole
-        // library three times per render.
         let artists = LibraryGroups.artists(from: tracks)
         HSplitView {
-            VStack {
-                TextField("Search Artists", text: $searchText).textFieldStyle(.roundedBorder).padding([.horizontal, .top], 8)
-                    .onChange(of: searchText) { _, _ in selectedArtistID = nil }
-                if artists.isEmpty {
-                    ContentUnavailableView(
-                        "No Artists Yet",
-                        systemImage: "music.mic",
-                        description: Text("Drop music files into\n\(coordinator.libraryRoot.path)")
-                    )
-                } else {
-                    VStack {
-                        List(selection: $selectedArtistID) {
-                            ForEach(artists.filter { searchText.isEmpty || $0.name.localizedStandardContains(searchText) }) { artist in
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(artist.name)
-                                    Text(LibraryText.songCount(artist.trackCount))
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                .tag(artist.id)
-                            }
-                        }
-                        // UI tests: an artist name (e.g. "The Fixtures") also
-                        // appears verbatim in the Artist column of the
-                        // SongsTableView right beside this list, so a bare label
-                        // lookup for the row is ambiguous — this identifier lets
-                        // tests scope the query to just this list.
-                        .accessibilityIdentifier("artistsList")
-                        .overlay {
-                            if !searchText.isEmpty, !artists.contains(where: { $0.name.localizedStandardContains(searchText) }) {
-                                Text("No matching artists").foregroundStyle(.secondary)
-                            }
-                        }
-                    }
+            GroupPickerPane(
+                items: artists,
+                noun: "Artists",
+                emptySystemImage: "music.mic",
+                emptyDescription: "Drop music files into\n\(coordinator.libraryRoot.path)",
+                listIdentifier: "artistsList",
+                searchText: $searchText,
+                selectedID: $selectedArtistID,
+                matches: Self.matches
+            ) { artist in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(artist.name)
+                    Text(LibraryText.songCount(artist.trackCount))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
             .frame(minWidth: 200, idealWidth: 220, maxWidth: 300)
@@ -244,29 +226,17 @@ private struct ArtistsDetailView: View {
             // rather than A–Z by title.
             SongsTableView(
                 coordinator: coordinator,
-                filter: filter(artists: artists),
-                initialSortOrder: [
-                    KeyPathComparator(\.albumSortKey, order: .forward),
-                    KeyPathComparator(\.discNumber, order: .forward),
-                    KeyPathComparator(\.trackNumber, order: .forward),
-                ]
+                filter: GroupPickerPane<ArtistGroup, EmptyView>.trackFilter(
+                    items: artists,
+                    selectedID: selectedArtistID,
+                    searchText: searchText,
+                    matches: Self.matches,
+                    trackIDs: { $0.albums.flatMap(\.trackIDs) }
+                ),
+                initialSortOrder: SongsTableView.albumOrder
             )
             .frame(minWidth: 320)
         }
-    }
-
-    /// nil selection = all tracks; otherwise every track belonging to any of
-    /// the selected artist's albums.
-    private func filter(artists: [ArtistGroup]) -> (Track) -> Bool {
-        guard let selectedArtistID, let group = artists.first(where: { $0.id == selectedArtistID }) else {
-            if !searchText.isEmpty {
-                let ids = Set(artists.filter { $0.name.localizedStandardContains(searchText) }.flatMap(\.albums).flatMap(\.trackIDs))
-                return { ids.contains($0.persistentModelID) }
-            }
-            return { _ in true }
-        }
-        let ids = Set(group.albums.flatMap(\.trackIDs))
-        return { ids.contains($0.persistentModelID) }
     }
 }
 
@@ -279,48 +249,33 @@ private struct AlbumsDetailView: View {
     @State private var selectedAlbumID: String?
     @State private var searchText = ""
 
+    private static func matches(_ album: AlbumGroup, _ query: String) -> Bool {
+        album.title.localizedStandardContains(query) || album.artistName.localizedStandardContains(query)
+    }
+
     var body: some View {
-        // Grouped once per body evaluation (see ArtistsDetailView).
         let albums = LibraryGroups.albums(from: tracks)
         HSplitView {
-            VStack {
-                TextField("Search Albums", text: $searchText).textFieldStyle(.roundedBorder).padding([.horizontal, .top], 8)
-                    .onChange(of: searchText) { _, _ in selectedAlbumID = nil }
-                if albums.isEmpty {
-                    ContentUnavailableView(
-                        "No Albums Yet",
-                        systemImage: "square.stack",
-                        description: Text("Drop music files into\n\(coordinator.libraryRoot.path)")
-                    )
-                } else {
-                    VStack {
-                        List(selection: $selectedAlbumID) {
-                            ForEach(albums.filter { searchText.isEmpty || $0.title.localizedStandardContains(searchText) || $0.artistName.localizedStandardContains(searchText) }) { album in
-                                HStack(spacing: 8) {
-                                    ArtworkImage(artworkID: album.artworkID, directory: coordinator.artworkDirectory, pointSize: 56)
-                                        .frame(width: 56, height: 56)
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(album.title)
-                                            .lineLimit(1)
-                                        Text(album.artistName)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                            .lineLimit(1)
-                                    }
-                                }
-                                .tag(album.id)
-                            }
-                        }
-                        // UI tests: an album title (e.g. "Covered") also appears
-                        // verbatim in the Album column of the SongsTableView
-                        // right beside this list — see the matching comment on
-                        // `artistsList` above.
-                        .accessibilityIdentifier("albumsList")
-                        .overlay {
-                            if !searchText.isEmpty, !albums.contains(where: { $0.title.localizedStandardContains(searchText) || $0.artistName.localizedStandardContains(searchText) }) {
-                                Text("No matching albums").foregroundStyle(.secondary)
-                            }
-                        }
+            GroupPickerPane(
+                items: albums,
+                noun: "Albums",
+                emptySystemImage: "square.stack",
+                emptyDescription: "Drop music files into\n\(coordinator.libraryRoot.path)",
+                listIdentifier: "albumsList",
+                searchText: $searchText,
+                selectedID: $selectedAlbumID,
+                matches: Self.matches
+            ) { album in
+                HStack(spacing: 8) {
+                    ArtworkImage(artworkID: album.artworkID, directory: coordinator.artworkDirectory, pointSize: 56)
+                        .frame(width: 56, height: 56)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(album.title)
+                            .lineLimit(1)
+                        Text(album.artistName)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
                     }
                 }
             }
@@ -331,29 +286,16 @@ private struct AlbumsDetailView: View {
 
             SongsTableView(
                 coordinator: coordinator,
-                filter: filter(albums: albums),
-                // Album first: with no album selected, disc/track alone
-                // interleaved every album's track 1s, then its 2s, ...
-                initialSortOrder: [
-                    KeyPathComparator(\.albumSortKey, order: .forward),
-                    KeyPathComparator(\.discNumber, order: .forward),
-                    KeyPathComparator(\.trackNumber, order: .forward),
-                ]
+                filter: GroupPickerPane<AlbumGroup, EmptyView>.trackFilter(
+                    items: albums,
+                    selectedID: selectedAlbumID,
+                    searchText: searchText,
+                    matches: Self.matches,
+                    trackIDs: \.trackIDs
+                ),
+                initialSortOrder: SongsTableView.albumOrder
             )
             .frame(minWidth: 320)
         }
-    }
-
-    /// nil selection = all tracks; otherwise just the selected album's tracks.
-    private func filter(albums: [AlbumGroup]) -> (Track) -> Bool {
-        guard let selectedAlbumID, let group = albums.first(where: { $0.id == selectedAlbumID }) else {
-            if !searchText.isEmpty {
-                let ids = Set(albums.filter { $0.title.localizedStandardContains(searchText) || $0.artistName.localizedStandardContains(searchText) }.flatMap(\.trackIDs))
-                return { ids.contains($0.persistentModelID) }
-            }
-            return { _ in true }
-        }
-        let ids = Set(group.trackIDs)
-        return { ids.contains($0.persistentModelID) }
     }
 }

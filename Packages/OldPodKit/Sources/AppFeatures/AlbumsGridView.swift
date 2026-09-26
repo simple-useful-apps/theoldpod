@@ -45,9 +45,7 @@ struct AlbumsGridView: View {
             }
         }
         .searchable(text: $searchText, prompt: "Search Albums")
-        .overlay {
-            if !albums.isEmpty, filtered.isEmpty { ContentUnavailableView.search(text: searchText) }
-        }
+        .searchEmptyOverlay(isEmpty: !albums.isEmpty && filtered.isEmpty, searchText: searchText)
         .refreshable { await coordinator.refreshLibrary() }
         .toolbar { ToolbarItem(placement: .automatic) { LibraryStatusButton(coordinator: coordinator) } }
     }

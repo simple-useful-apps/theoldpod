@@ -53,16 +53,7 @@ struct AlbumDetailView: View {
                             onAddToPlaylist: { trackPendingPlaylistAdd = track }
                         )
                     }
-                    #if os(iOS)
-                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                        Button {
-                            deletionRequest = .songs([SongDeletionTarget(track: track)])
-                        } label: {
-                            Label("Delete Song", systemImage: "trash")
-                        }
-                        .tint(.red)
-                    }
-                    #endif
+                    .deleteSwipeAction("Delete Song") { deletionRequest = .songs([SongDeletionTarget(track: track)]) }
                 }
             }
         }
@@ -93,15 +84,10 @@ struct AlbumDetailView: View {
                     .foregroundStyle(.secondary)
             }
 
-            // Distinct from the always-present (if disabled) mini-player
-            // transport button, which shares the "Play" label whenever
-            // nothing is queued yet.
             PlayShuffleButtons(
                 isEnabled: !tracks.isEmpty,
-                playAccessibilityIdentifier: "albumPlayButton",
-                shuffleAccessibilityIdentifier: "albumShuffleButton",
-                onPlay: { play(tracks: tracks) },
-                onShuffle: { shuffle(tracks: tracks) }
+                onPlay: { coordinator.play(tracks) },
+                onShuffle: { coordinator.playShuffled(tracks) }
             )
         }
         .frame(maxWidth: .infinity)
@@ -117,15 +103,6 @@ struct AlbumDetailView: View {
         let totalDuration = tracks.reduce(0) { $0 + $1.duration }
         parts.append(LibraryText.summary(songs: tracks.count, duration: totalDuration))
         return parts.joined(separator: " · ")
-    }
-
-    private func play(tracks: [Track]) {
-        coordinator.play(tracks, startingAt: 0)
-    }
-
-    /// Plays the whole album shuffled, starting from a random track.
-    private func shuffle(tracks: [Track]) {
-        coordinator.playShuffled(tracks)
     }
 }
 

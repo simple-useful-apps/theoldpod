@@ -33,8 +33,8 @@ struct SongTableRow: Identifiable, Equatable {
     init(track: Track) {
         id = track.persistentModelID
         title = track.title
-        artist = track.artist.isEmpty ? "Unknown Artist" : track.artist
-        album = track.album.isEmpty ? "Unknown Album" : track.album
+        artist = track.displayArtist
+        album = track.displayAlbum
         duration = track.duration
         albumSortKey = [album, track.albumArtist ?? artist]
             .map { $0.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil) }
@@ -66,6 +66,14 @@ struct SongsTableView: View {
     @State private var pendingDeletionIDs: [String: PersistentIdentifier] = [:]
     @State private var metadataEditor: MetadataEditorPresentation?
 
+    /// Album, then disc, then track: with no album selected, disc/track alone
+    /// would interleave every album's track 1s, then its 2s, and so on.
+    static let albumOrder: [KeyPathComparator<SongTableRow>] = [
+        KeyPathComparator(\.albumSortKey, order: .forward),
+        KeyPathComparator(\.discNumber, order: .forward),
+        KeyPathComparator(\.trackNumber, order: .forward),
+    ]
+
     init(
         coordinator: LibraryCoordinator,
         filter: @escaping (Track) -> Bool = { _ in true },
@@ -77,6 +85,7 @@ struct SongsTableView: View {
     }
 
     var body: some View {
+        let rows = visibleRows
         Group {
             if !tracks.contains(where: filter) {
                 ContentUnavailableView(
@@ -84,20 +93,17 @@ struct SongsTableView: View {
                     systemImage: "music.note",
                     description: Text("Drop music files into\n\(coordinator.libraryRoot.path)")
                 )
+            } else if rows.isEmpty {
+                ContentUnavailableView.search(text: searchText)
             } else {
-                let rows = visibleRows
-                if rows.isEmpty {
-                    ContentUnavailableView.search(text: searchText)
-                } else {
-                    table(for: rows)
-                }
+                table(for: rows)
             }
         }
         .searchable(text: $searchText, prompt: "Search")
         .onDeleteCommand {
             requestDeletion(for: selection)
         }
-        .focusedSceneValue(\.getInfoAction, getInfoAction)
+        .focusedSceneValue(\.getInfoAction, getInfoAction(rows: rows))
         .sheet(item: $metadataEditor) { request in
             MetadataEditorView(relativePath: request.relativePath, coordinator: coordinator)
         }
@@ -227,8 +233,8 @@ struct SongsTableView: View {
         addToPlaylist(playlist, ids: ids)
     }
 
-    private var getInfoAction: (@MainActor () -> Void)? {
-        guard editableTrack(for: selection) != nil else { return nil }
+    private func getInfoAction(rows: [SongTableRow]) -> (@MainActor () -> Void)? {
+        guard selection.count == 1, let row = rows.first(where: { selection.contains($0.id) }), row.isDownloaded else { return nil }
         return { openInfo(for: selection) }
     }
 

@@ -37,6 +37,7 @@ struct SongsListView: View {
     }
 
     var body: some View {
+        let filteredTracks = filteredTracks
         Group {
             if !tracks.contains(where: { !$0.isAudiobook }) {
                 ContentUnavailableView(
@@ -66,16 +67,7 @@ struct SongsListView: View {
                                 onAddToPlaylist: { trackPendingPlaylistAdd = track }
                             )
                         }
-                        #if os(iOS)
-                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            Button {
-                                deletionRequest = .songs([SongDeletionTarget(track: track)])
-                            } label: {
-                                Label("Delete Song", systemImage: "trash")
-                            }
-                            .tint(.red)
-                        }
-                        #endif
+                        .deleteSwipeAction("Delete Song") { deletionRequest = .songs([SongDeletionTarget(track: track)]) }
                     }
                 }
                 .listStyle(.plain)
@@ -136,7 +128,7 @@ private struct SongRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(track.title)
                     .font(.body)
-                Text(track.artist.isEmpty ? "Unknown Artist" : track.artist)
+                Text(track.displayArtist)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }

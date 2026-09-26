@@ -19,11 +19,10 @@ public struct BooksView: View {
         self.coordinator = coordinator
     }
 
-    private var bookNames: [String] {
-        Array(Set(tracks.compactMap(\.bookID))).sorted { $0.localizedStandardCompare($1) == .orderedAscending }
-    }
-
     public var body: some View {
+        let chaptersByBook = Dictionary(grouping: tracks.filter(\.isAudiobook)) { $0.bookID ?? "" }
+        let bookNames = chaptersByBook.keys.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+        let filtered = bookNames.filter { searchText.isEmpty || $0.localizedStandardContains(searchText) }
         Group {
             if bookNames.isEmpty {
                 ContentUnavailableView {
@@ -35,7 +34,7 @@ public struct BooksView: View {
                         .disabled(coordinator.importer.isImporting)
                 }
             } else {
-                List(bookNames.filter { searchText.isEmpty || $0.localizedStandardContains(searchText) }, id: \.self) { name in
+                List(filtered, id: \.self) { name in
                     NavigationLink {
                         BookDetailView(name: name, coordinator: coordinator)
                     } label: {
@@ -45,8 +44,7 @@ public struct BooksView: View {
                                 .foregroundStyle(.secondary)
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(name)
-                                let chapters = tracks.filter { $0.bookID == name }
-                                Text(bookSummary(chapters))
+                                Text(bookSummary(chaptersByBook[name] ?? []))
                                     .font(.caption).foregroundStyle(.secondary)
                             }
                         }
@@ -56,27 +54,14 @@ public struct BooksView: View {
                             deletionRequest = .book(name: name)
                         }
                     }
-                    #if os(iOS)
-                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                        Button {
-                            deletionRequest = .book(name: name)
-                        } label: {
-                            Label("Delete Book", systemImage: "trash")
-                        }
-                        .tint(.red)
-                    }
-                    #endif
+                    .deleteSwipeAction("Delete Book") { deletionRequest = .book(name: name) }
                 }
                 .listStyle(.plain)
             }
         }
         .navigationTitle("Books")
         .searchable(text: $searchText, prompt: "Search Books")
-        .overlay {
-            if !bookNames.isEmpty, !searchText.isEmpty, !bookNames.contains(where: { $0.localizedStandardContains(searchText) }) {
-                ContentUnavailableView.search(text: searchText)
-            }
-        }
+        .searchEmptyOverlay(isEmpty: !bookNames.isEmpty && filtered.isEmpty, searchText: searchText)
         .refreshable { await coordinator.refreshLibrary() }
         .toolbar {
             #if os(iOS)

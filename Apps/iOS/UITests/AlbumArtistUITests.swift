@@ -28,7 +28,7 @@ final class AlbumArtistUITests: XCTestCase {
         // Not `app.buttons["Play"]`: the always-present (if disabled)
         // mini-player transport button shares that label whenever nothing
         // is queued yet, making a plain label lookup ambiguous.
-        app.buttons["albumPlayButton"].tap()
+        app.buttons["playButton"].tap()
 
         let miniBarTitle = app.staticTexts["miniPlayerTitle"]
         assertExists(miniBarTitle, "Play should start at track 1, Fixture One")
@@ -69,7 +69,7 @@ final class AlbumArtistUITests: XCTestCase {
         albumCell.tap()
         assertExists(app.navigationBars["Test Tones"])
 
-        app.buttons["albumShuffleButton"].tap()
+        app.buttons["shuffleButton"].tap()
 
         let playPauseButton = app.buttons["miniPlayerPlayPauseButton"]
         assertExists(playPauseButton, "shuffle should start playback")

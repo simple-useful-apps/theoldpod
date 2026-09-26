@@ -112,23 +112,8 @@ struct PlayerBarView: View {
 
     private var rightCluster: some View {
         HStack(spacing: 14) {
-            Button {
-                player.toggleShuffle()
-            } label: {
-                Image(systemName: "shuffle")
-            }
-            .accessibilityLabel("Shuffle")
-            .accessibilityValue(player.isShuffled ? "On" : "Off")
-            .foregroundStyle(player.isShuffled ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
-
-            Button {
-                player.cycleRepeatMode()
-            } label: {
-                Image(systemName: player.repeatMode == .one ? "repeat.1" : "repeat")
-            }
-            .accessibilityLabel("Repeat")
-            .accessibilityValue(player.repeatMode.rawValue)
-            .foregroundStyle(player.repeatMode != .off ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
+            ShuffleToggle(player: player)
+            RepeatToggle(player: player)
         }
         .buttonStyle(.borderless)
         .imageScale(.medium)

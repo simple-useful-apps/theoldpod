@@ -59,4 +59,12 @@ public final class Track {
         self.artworkID = artworkID
         self.addedAt = addedAt
     }
+
+    public var displayArtist: String {
+        artist.isEmpty ? "Unknown Artist" : artist
+    }
+
+    public var displayAlbum: String {
+        album.isEmpty ? "Unknown Album" : album
+    }
 }
