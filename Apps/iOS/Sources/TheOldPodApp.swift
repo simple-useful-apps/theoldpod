@@ -12,7 +12,7 @@ struct TheOldPodApp: App {
                 RootTabView(coordinator: coordinator)
                     .modelContainer(coordinator.container)
             } else if hasFinishedLoading {
-                Text("theoldpod couldn't set up its library folder.")
+                Text("The Old Pod couldn't set up its library folder.")
                     .foregroundStyle(.secondary)
                     .padding()
             } else {

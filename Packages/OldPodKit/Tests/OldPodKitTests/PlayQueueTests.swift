@@ -215,7 +215,7 @@ struct PlayQueueTests {
         #expect(queue.items == queue.items) // unchanged order, sanity check
     }
 
-    // MARK: - playNext / append / jump
+    // MARK: - playNext / append
 
     @Test func playNextInsertsRightAfterCurrentTrack() {
         var queue = PlayQueue()
@@ -252,30 +252,6 @@ struct PlayQueueTests {
         queue.append(second)
         #expect(queue.items == [track, second])
         #expect(queue.currentIndex == 0)
-    }
-
-    @Test func jumpToValidIndexMovesCurrent() {
-        var queue = PlayQueue()
-        let tracks = makeTracks(3)
-        queue.replace(with: tracks, startingAt: 0)
-
-        let jumped = queue.jump(to: 2)
-        #expect(jumped == tracks[2])
-        #expect(queue.currentIndex == 2)
-    }
-
-    @Test func jumpOutOfBoundsReturnsNilAndDoesNotChangeState() {
-        var queue = PlayQueue()
-        let tracks = makeTracks(3)
-        queue.replace(with: tracks, startingAt: 1)
-
-        let result = queue.jump(to: 99)
-        #expect(result == nil)
-        #expect(queue.currentIndex == 1)
-
-        let negative = queue.jump(to: -1)
-        #expect(negative == nil)
-        #expect(queue.currentIndex == 1)
     }
 }
 

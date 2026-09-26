@@ -237,7 +237,8 @@ public final class PlayerController {
             guard seek.retries < 3 else {
                 pendingSeek = seek
                 pause()
-                playbackNotice = "The chapter couldn’t move to that position. Adjust the slider or press Play to try again. Your saved position is unchanged."
+                playbackNotice = "The chapter couldn’t move to that position. "
+                    + "Adjust the slider or press Play to try again. Your saved position is unchanged."
                 return
             }
             seek.retries += 1
@@ -681,7 +682,8 @@ public final class PlayerController {
                 pendingSeek = nil
                 canSeek = false
                 hasAuthoritativeCurrentTime = false
-                playbackNotice = "This chapter couldn’t be played. Try again after it finishes downloading. Your saved position is unchanged."
+                playbackNotice = "This chapter couldn’t be played. "
+                    + "Try again after it finishes downloading. Your saved position is unchanged."
                 return
             }
             Self.logger.error("Playing item failed; skipping to next track.")

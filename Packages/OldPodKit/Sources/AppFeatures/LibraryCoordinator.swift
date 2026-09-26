@@ -358,7 +358,8 @@ private extension LibraryDeletionResult {
             successfulTargets: successfulTargets,
             alreadyMissingTargets: alreadyMissingTargets,
             failures: failures,
-            postDeletionWarning: "The selected files were moved to Trash. The library check is still pending or didn’t finish. Use Refresh Library if the list doesn’t update."
+            postDeletionWarning: "The selected files were moved to Trash. "
+                + "The library check is still pending or didn’t finish. Use Refresh Library if the list doesn’t update."
         )
     }
 }

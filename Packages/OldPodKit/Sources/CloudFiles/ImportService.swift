@@ -1,24 +1,15 @@
 import Foundation
 import UniformTypeIdentifiers
 
-public enum ImportPhase: Sendable, Equatable {
-    case copying
-    case converting
-}
-
 public struct ImportProgress: Sendable, Equatable {
-    public let fileName: String
+    public let description: String
     public let completed: Int
     public let total: Int
-    public let phase: ImportPhase
-    public let description: String
 
-    public init(fileName: String, completed: Int, total: Int, phase: ImportPhase, description: String) {
-        self.fileName = fileName
+    public init(description: String, completed: Int, total: Int) {
+        self.description = description
         self.completed = completed
         self.total = total
-        self.phase = phase
-        self.description = description
     }
 }
 
@@ -36,21 +27,18 @@ public struct ImportIssue: Sendable, Equatable {
 public struct ImportResult: Sendable, Equatable {
     /// Relative paths created (or already present) under the library root.
     public let imported: [String]
-    /// Source filenames rejected as unsupported or that failed to copy.
-    public let skipped: [String]
     public let failures: [ImportIssue]
     public let warnings: [ImportIssue]
 
-    public init(
-        imported: [String],
-        skipped: [String],
-        failures: [ImportIssue] = [],
-        warnings: [ImportIssue] = []
-    ) {
+    public init(imported: [String], failures: [ImportIssue] = [], warnings: [ImportIssue] = []) {
         self.imported = imported
-        self.skipped = skipped
         self.failures = failures
         self.warnings = warnings
+    }
+
+    /// Source filenames rejected as unsupported or that failed to copy.
+    public var skipped: [String] {
+        failures.map(\.filename)
     }
 
     public var report: String? {
@@ -95,10 +83,11 @@ public struct ImportService: Sendable {
             suffix += 1
         }
         let result = await ImportService(libraryRoot: folder).importFiles(at: urls, onProgress: onProgress)
-        return ImportResult(imported: result.imported.map { "Audiobooks/\(folder.lastPathComponent)/\($0)" },
-                            skipped: result.skipped,
-                            failures: result.failures,
-                            warnings: result.warnings)
+        return ImportResult(
+            imported: result.imported.map { "Audiobooks/\(folder.lastPathComponent)/\($0)" },
+            failures: result.failures,
+            warnings: result.warnings
+        )
     }
 
     /// Copies the given files into the library root, flat (no subfolders
@@ -112,7 +101,6 @@ public struct ImportService: Sendable {
         }
 
         var imported: [String] = []
-        var skipped: [String] = []
         var failures: [ImportIssue] = []
         var warnings: [ImportIssue] = []
         var candidates: [URL] = []
@@ -125,7 +113,6 @@ public struct ImportService: Sendable {
 
             let keys: Set<URLResourceKey> = [.isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey]
             guard let values = try? url.resourceValues(forKeys: keys), values.isSymbolicLink != true else {
-                skipped.append(filename)
                 failures.append(ImportIssue(filename: filename, message: "The file could not be read."))
                 continue
             }
@@ -136,7 +123,6 @@ public struct ImportService: Sendable {
                     at: url, includingPropertiesForKeys: Array(keys),
                     options: [.skipsHiddenFiles, .skipsPackageDescendants]
                 ) else {
-                    skipped.append(filename)
                     failures.append(ImportIssue(filename: filename, message: "The folder could not be read."))
                     continue
                 }
@@ -147,7 +133,6 @@ public struct ImportService: Sendable {
                     return values.isRegularFile == true && values.isSymbolicLink != true
                 }.sorted { $0.path < $1.path }
                 if children.isEmpty {
-                    skipped.append(filename)
                     failures.append(ImportIssue(filename: filename, message: "No supported audio files were found."))
                 } else {
                     candidates.append(contentsOf: children)
@@ -155,9 +140,7 @@ public struct ImportService: Sendable {
             } else if values.isRegularFile == true, AudioFileSupport.supportsImporting(url) {
                 candidates.append(url)
             } else {
-                skipped.append(filename)
                 failures.append(ImportIssue(filename: filename, message: "This audio format is not supported."))
-                continue
             }
         }
 
@@ -173,11 +156,9 @@ public struct ImportService: Sendable {
             #if os(macOS)
                 if candidate.pathExtension.lowercased() == "wma" {
                     await onProgress?(ImportProgress(
-                        fileName: candidate.lastPathComponent,
+                        description: "Converting \(candidate.lastPathComponent)",
                         completed: completed,
-                        total: candidates.count,
-                        phase: .converting,
-                        description: "Converting \(candidate.lastPathComponent)"
+                        total: candidates.count
                     ))
                     do {
                         let conversion = try await WMAConverter().convert(candidate)
@@ -192,12 +173,10 @@ public struct ImportService: Sendable {
                             })
                         } else {
                             if Task.isCancelled { break }
-                            skipped.append(candidate.lastPathComponent)
                             failures.append(ImportIssue(filename: candidate.lastPathComponent, message: "The converted file could not be added to the library."))
                         }
                     } catch {
                         if error is CancellationError || Task.isCancelled { break }
-                        skipped.append(candidate.lastPathComponent)
                         failures.append(ImportIssue(filename: candidate.lastPathComponent, message: WMAConverter.userMessage(for: error)))
                     }
                     continue
@@ -205,22 +184,19 @@ public struct ImportService: Sendable {
             #endif
 
             await onProgress?(ImportProgress(
-                fileName: candidate.lastPathComponent,
+                description: "Copying \(candidate.lastPathComponent)",
                 completed: completed,
-                total: candidates.count,
-                phase: .copying,
-                description: "Copying \(candidate.lastPathComponent)"
+                total: candidates.count
             ))
             if let relativePath = copyIntoLibrary(from: candidate, filename: candidate.lastPathComponent) {
                 imported.append(relativePath)
             } else {
                 if Task.isCancelled { break }
-                skipped.append(candidate.lastPathComponent)
                 failures.append(ImportIssue(filename: candidate.lastPathComponent, message: "The file could not be copied."))
             }
         }
 
-        return ImportResult(imported: imported, skipped: skipped, failures: failures, warnings: warnings)
+        return ImportResult(imported: imported, failures: failures, warnings: warnings)
     }
 
     /// Copies `source` into the library root under `filename`, resolving name

@@ -255,16 +255,6 @@ public struct PlayQueue: Sendable, Equatable {
         originalOrder = originalOrder.map { byPath[$0.relativePath] ?? $0 }
     }
 
-    /// Bounds-checked jump to an arbitrary index; leaves state untouched and
-    /// returns nil if `index` is out of range.
-    /// Not yet wired to any UI — reserved for the future "Up Next" queue
-    /// screen (see docs/BACKLOG.md).
-    public mutating func jump(to index: Int) -> PlayableTrack? {
-        guard items.indices.contains(index) else { return nil }
-        currentIndex = index
-        return items[index]
-    }
-
     /// Removes every occurrence of an exact path, plus every chapter below
     /// the requested book folders. If the current item is removed, the queue
     /// parks on the nearest following survivor (or the preceding tail).

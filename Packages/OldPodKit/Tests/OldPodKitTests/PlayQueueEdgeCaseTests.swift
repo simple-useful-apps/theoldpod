@@ -232,7 +232,6 @@ struct PlayQueueEdgeCaseTests {
             #expect(queue.skipNext(repeatMode: mode) == nil)
             #expect(queue.skipPrevious(repeatMode: mode) == nil)
         }
-        #expect(queue.jump(to: 0) == nil)
         #expect(queue.current == nil)
         #expect(queue.currentIndex == nil)
     }
@@ -256,13 +255,6 @@ struct PlayQueueEdgeCaseTests {
 
         #expect(queue.currentIndex == 0)
         #expect(queue.current == tracks[0])
-    }
-
-    @Test func jumpOnEmptyQueueReturnsNil() {
-        var queue = PlayQueue()
-        #expect(queue.jump(to: 0) == nil)
-        #expect(queue.jump(to: -1) == nil)
-        #expect(queue.current == nil)
     }
 
     @Test func duplicateTracksAreBothPlayableAndSkipNextWalksThroughEachOccurrence() {

@@ -11,12 +11,9 @@ public enum LibraryContainerFactory {
         try FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(), withIntermediateDirectories: true
         )
-        // cloudKitDatabase MUST be explicit: the default (.automatic) sees the
-        // iCloud container in the entitlements and silently enables CloudKit
-        // mirroring — which this architecture rejects (files sync via iCloud
-        // Drive; the store is a rebuildable local index) and which refuses to
-        // load our non-optional schema at all. Surfaced the moment real
-        // entitlements were signed in.
+        // `.none` must be explicit: `.automatic` sees the iCloud entitlement,
+        // turns on CloudKit mirroring, and then refuses this non-optional
+        // schema. The store is a local index; files sync through iCloud Drive.
         let schema = Schema(LibrarySchema.models)
         let configuration = ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none)
         return try ModelContainer(for: schema, configurations: [configuration])

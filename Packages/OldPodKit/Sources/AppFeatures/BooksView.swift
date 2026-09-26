@@ -85,7 +85,11 @@ public struct BooksView: View {
         } message: {
             Text("Name the book, then select its folder or all its chapter files. Originals are left unchanged.")
         }
-        .fileImporter(isPresented: $pickingFiles, allowedContentTypes: ImportService.supportedContentTypes, allowsMultipleSelection: true) { result in
+        .fileImporter(
+            isPresented: $pickingFiles,
+            allowedContentTypes: ImportService.supportedContentTypes,
+            allowsMultipleSelection: true
+        ) { result in
             if case let .success(urls) = result {
                 coordinator.importer.importAudiobook(at: urls, title: title)
             }
@@ -109,8 +113,8 @@ private struct BookDetailView: View {
     @State private var deletionRequest: LibraryDeletionRequest?
 
     private var chapters: [Track] {
+        // Chapters sort by filename, not tag: untagged downloads still read in order.
         tracks.filter { $0.bookID == name }.sorted {
-            // Filename prefixes are authoritative for untagged Manning books.
             $0.relativePath.localizedStandardCompare($1.relativePath) == .orderedAscending
         }
     }

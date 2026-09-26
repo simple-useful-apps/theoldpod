@@ -23,23 +23,18 @@ public struct LibraryMetadataRefresh: Sendable {
 
 /// Turns file-system diffs from a `LibraryFolderWatching` into `Track` rows.
 /// All SwiftData work happens on this actor's own `ModelContext`.
-///
-/// `@ModelActor` synthesizes a `modelContainer`/`modelExecutor`-only
-/// `init(modelContainer:)`. To also store an `ArtworkStore`, `artwork` is
-/// declared as an `Optional` (so the macro's synthesized initializer, which
-/// doesn't know about it, still satisfies definite initialization) and the
-/// public initializer below sets up the macro's storage by hand alongside it.
-@ModelActor
-public actor LibraryIndexer {
+public actor LibraryIndexer: ModelActor {
+    public nonisolated let modelExecutor: any ModelExecutor
+    public nonisolated let modelContainer: ModelContainer
+
     private static let logger = Logger(subsystem: "OldPodKit.LibraryStore", category: "LibraryIndexer")
 
-    private var artwork: ArtworkStore?
+    private let artwork: ArtworkStore
     private var pathRevisions: [String: Int] = [:]
 
     public init(modelContainer: ModelContainer, artwork: ArtworkStore) {
-        let modelContext = ModelContext(modelContainer)
-        modelExecutor = DefaultSerialModelExecutor(modelContext: modelContext)
         self.modelContainer = modelContainer
+        modelExecutor = DefaultSerialModelExecutor(modelContext: ModelContext(modelContainer))
         self.artwork = artwork
     }
 
@@ -139,10 +134,7 @@ public actor LibraryIndexer {
             else { return }
         }
 
-        var artworkID: String?
-        if let data = metadata?.artwork {
-            artworkID = try? artwork?.store(data)
-        }
+        let artworkID = metadata?.artwork.flatMap { try? artwork.store($0) }
 
         if let existing {
             if let metadata {
@@ -204,7 +196,7 @@ public actor LibraryIndexer {
         track.year = metadata.year
         track.genre = metadata.genre
         if metadata.duration > 0, metadata.duration.isFinite { track.duration = metadata.duration }
-        if let data = metadata.artwork, let artworkID = try? artwork?.store(data) {
+        if let data = metadata.artwork, let artworkID = try? artwork.store(data) {
             track.artworkID = artworkID
         } else {
             track.artworkID = nil
