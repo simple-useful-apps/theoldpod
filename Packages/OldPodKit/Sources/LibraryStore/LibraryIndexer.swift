@@ -5,28 +5,19 @@ import MetadataImport
 import os
 import SwiftData
 
+/// Metadata read from a file, together with the version of the file it was
+/// read from, so the indexer can refuse results for a file that changed.
 public struct LibraryMetadataRefresh: Sendable {
     public let relativePath: String
     public let url: URL
     public let metadata: TrackMetadata
-    public let fileSize: Int64
-    public let fileModified: Date
-    public let fileResourceIdentifier: String?
+    public let fileVersion: FileVersion
 
-    public init(
-        relativePath: String,
-        url: URL,
-        metadata: TrackMetadata,
-        fileSize: Int64,
-        fileModified: Date,
-        fileResourceIdentifier: String?
-    ) {
+    public init(relativePath: String, url: URL, metadata: TrackMetadata, fileVersion: FileVersion) {
         self.relativePath = relativePath
         self.url = url
         self.metadata = metadata
-        self.fileSize = fileSize
-        self.fileModified = fileModified
-        self.fileResourceIdentifier = fileResourceIdentifier
+        self.fileVersion = fileVersion
     }
 }
 
@@ -103,17 +94,13 @@ public actor LibraryIndexer {
     public func applyMetadataRefreshes(_ refreshes: [LibraryMetadataRefresh]) -> Set<String> {
         var updated: Set<String> = []
         for refresh in refreshes {
-            guard currentFileVersion(at: refresh.url) == FileVersion(
-                size: refresh.fileSize,
-                modified: refresh.fileModified,
-                resourceIdentifier: refresh.fileResourceIdentifier
-            ) else { continue }
+            guard FileVersion.current(at: refresh.url) == refresh.fileVersion else { continue }
             let path = refresh.relativePath
             let descriptor = FetchDescriptor<Track>(predicate: #Predicate { $0.relativePath == path })
             guard let track = try? modelContext.fetch(descriptor).first else { continue }
             applyAuthoritative(refresh.metadata, relativePath: path, to: track)
-            track.fileSize = refresh.fileSize
-            track.fileModified = refresh.fileModified
+            track.fileSize = refresh.fileVersion.size
+            track.fileModified = refresh.fileVersion.modified
             track.isDownloaded = true
             updated.insert(path)
         }
@@ -148,12 +135,12 @@ public actor LibraryIndexer {
         // hasn't downloaded yet is indexed by filename alone, and picks up
         // its real metadata once `apply` sees it again with `isDownloaded`
         // flipped to `true`.
-        let versionBeforeRead = file.isDownloaded ? currentFileVersion(at: file.url) : nil
+        let versionBeforeRead = file.isDownloaded ? FileVersion.current(at: file.url) : nil
         let metadata = file.isDownloaded ? try? await MetadataReader.read(from: file.url) : nil
         guard pathRevisions[path] == revision else { return }
         if file.isDownloaded {
             guard let versionBeforeRead,
-                  versionBeforeRead == currentFileVersion(at: file.url),
+                  versionBeforeRead == FileVersion.current(at: file.url),
                   versionBeforeRead.size == file.size,
                   versionBeforeRead.modified == file.modified
             else { return }
@@ -236,25 +223,6 @@ public actor LibraryIndexer {
         if let existing = try? modelContext.fetch(descriptor).first {
             modelContext.delete(existing)
         }
-    }
-
-    private struct FileVersion: Equatable {
-        let size: Int64
-        let modified: Date
-        let resourceIdentifier: String?
-    }
-
-    private func currentFileVersion(at url: URL) -> FileVersion? {
-        let keys: Set<URLResourceKey> = [.fileSizeKey, .contentModificationDateKey, .fileResourceIdentifierKey]
-        guard let values = try? url.resourceValues(forKeys: keys),
-              let size = values.fileSize,
-              let modified = values.contentModificationDate
-        else { return nil }
-        return FileVersion(
-            size: Int64(size),
-            modified: modified,
-            resourceIdentifier: values.fileResourceIdentifier.map { String(describing: $0) }
-        )
     }
 
     private func bumpRevision(for path: String) -> Int {

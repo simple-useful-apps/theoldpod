@@ -245,26 +245,11 @@ public final class LibraryCoordinator {
                         DownloadRequester.requestDownload(of: url)
                         for attempt in 0 ..< 4 {
                             if Task.isCancelled { return nil }
-                            let keys: Set<URLResourceKey> = [
-                                .fileSizeKey, .contentModificationDateKey, .fileResourceIdentifierKey,
-                            ]
-                            if let before = try? url.resourceValues(forKeys: keys),
-                               let size = before.fileSize,
-                               let modified = before.contentModificationDate,
+                            if let before = FileVersion.current(at: url),
                                let metadata = try? await MetadataReader.read(from: url), metadata.duration > 0,
-                               let after = try? url.resourceValues(forKeys: keys),
-                               after.fileSize == size,
-                               after.contentModificationDate == modified,
-                               Self.resourceIdentifier(after) == Self.resourceIdentifier(before)
+                               FileVersion.current(at: url) == before
                             {
-                                return LibraryMetadataRefresh(
-                                    relativePath: path,
-                                    url: url,
-                                    metadata: metadata,
-                                    fileSize: Int64(size),
-                                    fileModified: modified,
-                                    fileResourceIdentifier: Self.resourceIdentifier(before)
-                                )
+                                return LibraryMetadataRefresh(relativePath: path, url: url, metadata: metadata, fileVersion: before)
                             }
                             if attempt < 3 { try? await Task.sleep(for: .milliseconds(750)) }
                         }
@@ -401,25 +386,13 @@ public final class LibraryCoordinator {
             guard changed else { return false }
 
             let url = libraryRoot.appendingPathComponent(relativePath)
-            let keys: Set<URLResourceKey> = [
-                .fileSizeKey, .contentModificationDateKey, .fileResourceIdentifierKey,
-            ]
-            guard let values = try? url.resourceValues(forKeys: keys),
-                  let size = values.fileSize,
-                  let modified = values.contentModificationDate,
+            guard let version = FileVersion.current(at: url),
                   let metadata = try? await MetadataReader.read(from: url)
             else {
                 _ = await refreshLibrary()
                 return true
             }
-            let refresh = LibraryMetadataRefresh(
-                relativePath: relativePath,
-                url: url,
-                metadata: metadata,
-                fileSize: Int64(size),
-                fileModified: modified,
-                fileResourceIdentifier: Self.resourceIdentifier(values)
-            )
+            let refresh = LibraryMetadataRefresh(relativePath: relativePath, url: url, metadata: metadata, fileVersion: version)
             let updated = await indexer.applyMetadataRefreshes([refresh])
             if updated.contains(relativePath),
                let tracks = try? container.mainContext.fetch(FetchDescriptor<Track>())
@@ -473,10 +446,6 @@ public final class LibraryCoordinator {
             .appendingPathComponent("Artwork", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         return directory
-    }
-
-    private nonisolated static func resourceIdentifier(_ values: URLResourceValues) -> String? {
-        values.fileResourceIdentifier.map { String(describing: $0) }
     }
 
     private func completeRefreshWaiter(_ id: UUID, succeeded: Bool) {
