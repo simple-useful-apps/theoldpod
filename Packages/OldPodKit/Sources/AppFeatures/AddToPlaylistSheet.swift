@@ -8,17 +8,13 @@ import SwiftUI
 /// menu item.
 struct AddToPlaylistSheet: View {
     let track: Track
+    let store: PlaylistStore
 
     @Query(sort: \Playlist.createdAt) private var playlists: [Playlist]
-    @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
     @State private var isPresentingNewPlaylistAlert = false
     @State private var newPlaylistName = ""
-
-    init(track: Track) {
-        self.track = track
-    }
 
     var body: some View {
         NavigationStack {
@@ -32,7 +28,7 @@ struct AddToPlaylistSheet: View {
 
                 ForEach(playlists) { playlist in
                     Button {
-                        PlaylistOps.add(track, to: playlist, in: modelContext)
+                        store.add(track, to: playlist)
                         dismiss()
                     } label: {
                         Text(playlist.name)
@@ -52,8 +48,7 @@ struct AddToPlaylistSheet: View {
                 .alert("New Playlist", isPresented: $isPresentingNewPlaylistAlert) {
                     TextField("Playlist Name", text: $newPlaylistName)
                     Button("Create") {
-                        let playlist = PlaylistOps.create(name: newPlaylistName, in: modelContext)
-                        PlaylistOps.add(track, to: playlist, in: modelContext)
+                        store.add(track, to: store.create(name: newPlaylistName))
                         dismiss()
                     }
                     Button("Cancel", role: .cancel) {}

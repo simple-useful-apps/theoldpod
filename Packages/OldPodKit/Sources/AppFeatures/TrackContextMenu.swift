@@ -55,9 +55,9 @@ public extension View {
     /// evaluate its content closure before the payload write is visible,
     /// presenting an empty sheet (classic SwiftUI gotcha, found by UI
     /// testing).
-    func addToPlaylistSheet(for track: Binding<Track?>) -> some View {
+    func addToPlaylistSheet(for track: Binding<Track?>, coordinator: LibraryCoordinator) -> some View {
         sheet(item: track) { track in
-            AddToPlaylistSheet(track: track)
+            AddToPlaylistSheet(track: track, store: coordinator.playlists)
         }
     }
 }

@@ -62,7 +62,7 @@ struct AlbumDetailView: View {
         #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
         #endif
-            .addToPlaylistSheet(for: $trackPendingPlaylistAdd)
+            .addToPlaylistSheet(for: $trackPendingPlaylistAdd, coordinator: coordinator)
             .libraryDeletionConfirmation(request: $deletionRequest, coordinator: coordinator)
     }
 

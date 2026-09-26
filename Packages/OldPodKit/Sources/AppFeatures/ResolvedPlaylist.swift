@@ -26,7 +26,7 @@ public struct ResolvedPlaylist {
     public init(_ playlist: Playlist, availableTracks: [Track]) {
         let byPath = Dictionary(availableTracks.map { ($0.relativePath, $0) }, uniquingKeysWith: { first, _ in first })
         var tracks: [Track] = []
-        rows = PlaylistOps.sortedEntries(of: playlist).map { entry in
+        rows = playlist.sortedEntries.map { entry in
             guard let track = byPath[entry.trackPath] else {
                 return Row(entry: entry, track: nil, playableIndex: nil)
             }
@@ -64,7 +64,7 @@ public extension Query<Track, [Track]> {
     /// fetch rather than a query per row.
     @MainActor
     static func tracks(referencedBy playlist: Playlist) -> Query<Track, [Track]> {
-        let paths = Set(PlaylistOps.sortedEntries(of: playlist).map(\.trackPath))
+        let paths = Set(playlist.sortedEntries.map(\.trackPath))
         return Query(filter: #Predicate<Track> { paths.contains($0.relativePath) })
     }
 }

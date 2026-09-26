@@ -11,7 +11,6 @@ struct PlaylistDetailView: View {
     let playlist: Playlist
     let coordinator: LibraryCoordinator
 
-    @Environment(\.modelContext) private var modelContext
     @Query private var availableTracks: [Track]
     @State private var selection: Set<PersistentIdentifier> = []
     @State private var metadataEditor: MetadataEditorPresentation?
@@ -77,7 +76,7 @@ struct PlaylistDetailView: View {
                 .padding(.vertical, 2)
             }
             .onMove { source, destination in
-                PlaylistOps.moveEntries(from: source, to: destination, in: playlist, in: modelContext)
+                coordinator.playlists.moveEntries(from: source, to: destination, in: playlist)
             }
         }
         .contextMenu(forSelectionType: PersistentIdentifier.self) { ids in
@@ -117,7 +116,7 @@ struct PlaylistDetailView: View {
 
     private func removeEntries(_ offsets: IndexSet, ids: Set<PersistentIdentifier>) {
         guard !offsets.isEmpty else { return }
-        PlaylistOps.removeEntries(at: offsets, from: playlist, in: modelContext)
+        coordinator.playlists.removeEntries(at: offsets, from: playlist)
         selection.subtract(ids)
     }
 }

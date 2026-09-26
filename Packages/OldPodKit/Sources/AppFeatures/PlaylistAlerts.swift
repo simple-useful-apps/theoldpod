@@ -15,29 +15,30 @@ public struct PlaylistRename {
 
 public extension View {
     /// Rename alert for the playlist in `rename`, presented while it is set.
-    func playlistRenameAlert(_ rename: Binding<PlaylistRename?>) -> some View {
-        modifier(PlaylistRenameAlert(rename: rename))
+    func playlistRenameAlert(_ rename: Binding<PlaylistRename?>, coordinator: LibraryCoordinator) -> some View {
+        modifier(PlaylistRenameAlert(rename: rename, playlists: coordinator.playlists))
     }
 
     /// Delete confirmation for `playlist`, presented while it is set. Deleting
     /// removes the playlist file on disk, so both platforms confirm first.
     func playlistDeleteConfirmation(
         for playlist: Binding<Playlist?>,
+        coordinator: LibraryCoordinator,
         onDeleted: @escaping (Playlist) -> Void = { _ in }
     ) -> some View {
-        modifier(PlaylistDeleteConfirmation(playlist: playlist, onDeleted: onDeleted))
+        modifier(PlaylistDeleteConfirmation(playlist: playlist, playlists: coordinator.playlists, onDeleted: onDeleted))
     }
 }
 
 private struct PlaylistRenameAlert: ViewModifier {
     @Binding var rename: PlaylistRename?
-    @Environment(\.modelContext) private var modelContext
+    let playlists: PlaylistStore
 
     func body(content: Content) -> some View {
         content.alert("Rename Playlist", isPresented: $rename.isPresent, presenting: rename) { rename in
             TextField("Playlist Name", text: name)
             Button("Save") {
-                PlaylistOps.rename(rename.playlist, to: rename.name, in: modelContext)
+                playlists.rename(rename.playlist, to: rename.name)
             }
             Button("Cancel", role: .cancel) {}
         }
@@ -53,8 +54,8 @@ private struct PlaylistRenameAlert: ViewModifier {
 
 private struct PlaylistDeleteConfirmation: ViewModifier {
     @Binding var playlist: Playlist?
+    let playlists: PlaylistStore
     let onDeleted: (Playlist) -> Void
-    @Environment(\.modelContext) private var modelContext
 
     func body(content: Content) -> some View {
         content.confirmationDialog(
@@ -64,7 +65,7 @@ private struct PlaylistDeleteConfirmation: ViewModifier {
             presenting: playlist
         ) { playlist in
             Button("Delete \u{201C}\(playlist.name)\u{201D}", role: .destructive) {
-                PlaylistOps.delete(playlist, in: modelContext)
+                playlists.delete(playlist)
                 onDeleted(playlist)
             }
             Button("Cancel", role: .cancel) {}

@@ -43,12 +43,13 @@ public actor LibraryIndexer {
         self.artwork = artwork
     }
 
-    /// `reconcilingFullSnapshot`: pass true when `changes` is a watcher's
-    /// complete initial snapshot — every stored `Track` whose file is absent
-    /// from it gets deleted, so the store can never outlive the folder it
-    /// indexes (e.g. after a local → iCloud library-root switch).
+    /// Applies a batch of folder changes and returns every indexed path once
+    /// saved, or `nil` when the save failed. With `reconcilingFullSnapshot`,
+    /// `changes` is a watcher's complete snapshot and every `Track` whose
+    /// file is absent from it is deleted, so the store never outlives the
+    /// folder it indexes (as after a local → iCloud root switch).
     @discardableResult
-    public func apply(_ changes: [LibraryChange], reconcilingFullSnapshot: Bool = false) async -> Bool {
+    public func apply(_ changes: [LibraryChange], reconcilingFullSnapshot: Bool = false) async -> Set<String>? {
         for change in changes {
             switch change {
             case let .upsert(file):
@@ -71,20 +72,12 @@ public actor LibraryIndexer {
         }
         do {
             try modelContext.save()
+            return try Set(modelContext.fetch(FetchDescriptor<Track>()).map(\.relativePath))
         } catch {
-            // Same policy as PlaylistOps: never crash on a failed save, but
-            // leave a trail — a silently dropped batch looks like "my music
-            // didn't import" with nothing to diagnose.
+            // A silently dropped batch looks like "my music didn't import".
             Self.logger.error("Failed to save library index batch: \(error)")
-            return false
+            return nil
         }
-        return true
-    }
-
-    /// A Sendable snapshot used to confirm that a committed deletion batch
-    /// really removed its targets. Call only after `apply` reports success.
-    public func indexedRelativePaths() throws -> Set<String> {
-        try Set(modelContext.fetch(FetchDescriptor<Track>()).map(\.relativePath))
     }
 
     /// Commits metadata prepared from currently existing files. Refetching

@@ -16,7 +16,6 @@ import UniformTypeIdentifiers
 struct MacRootView: View {
     private let coordinator: LibraryCoordinator
 
-    @Environment(\.modelContext) private var modelContext
     @Query(sort: \Playlist.createdAt) private var playlists: [Playlist]
 
     @State private var selection: SidebarItem? = .songs
@@ -137,8 +136,8 @@ struct MacRootView: View {
             }
         }
         .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 260)
-        .playlistRenameAlert($rename)
-        .playlistDeleteConfirmation(for: $playlistPendingDelete) { deleted in
+        .playlistRenameAlert($rename, coordinator: coordinator)
+        .playlistDeleteConfirmation(for: $playlistPendingDelete, coordinator: coordinator) { deleted in
             if selection == .playlist(deleted.persistentModelID) {
                 selection = .songs
             }
@@ -176,7 +175,7 @@ struct MacRootView: View {
     // MARK: - Playlist sidebar actions
 
     private func createPlaylist() {
-        let playlist = PlaylistOps.create(name: "New Playlist", in: modelContext)
+        let playlist = coordinator.playlists.create(name: "New Playlist")
         selection = .playlist(playlist.persistentModelID)
         rename = PlaylistRename(playlist)
     }

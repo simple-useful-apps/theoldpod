@@ -120,7 +120,7 @@ private struct BookDetailView: View {
         let progress = coordinator.player.bookProgress(name)
         List {
             Section {
-                if let state = coordinator.bookPreparation[name] {
+                if let state = coordinator.books.states[name] {
                     switch state {
                     case let .preparing(completed, total):
                         HStack {
@@ -134,7 +134,7 @@ private struct BookDetailView: View {
                         VStack(alignment: .leading, spacing: 8) {
                             Text(message).foregroundStyle(.secondary)
                             Button("Try Again") {
-                                Task { await coordinator.prepareBook(named: name, relativePaths: chapters.map(\.relativePath)) }
+                                Task { await coordinator.books.prepare(named: name, relativePaths: chapters.map(\.relativePath)) }
                             }
                         }
                     }
@@ -187,7 +187,7 @@ private struct BookDetailView: View {
         .listStyle(.plain)
         .navigationTitle(name)
         .task(id: chapters.map(\.relativePath)) {
-            await coordinator.prepareBook(named: name, relativePaths: chapters.map(\.relativePath))
+            await coordinator.books.prepare(named: name, relativePaths: chapters.map(\.relativePath))
         }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {

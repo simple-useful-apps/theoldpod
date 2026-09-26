@@ -8,7 +8,6 @@ import SwiftUI
 /// context menu.
 struct PlaylistsListView: View {
     @Query(sort: \Playlist.createdAt) private var playlists: [Playlist]
-    @Environment(\.modelContext) private var modelContext
 
     private let coordinator: LibraryCoordinator
 
@@ -81,12 +80,12 @@ struct PlaylistsListView: View {
         .alert("New Playlist", isPresented: $isPresentingNewPlaylistAlert) {
             TextField("Playlist Name", text: $newPlaylistName)
             Button("Create") {
-                PlaylistOps.create(name: newPlaylistName, in: modelContext)
+                coordinator.playlists.create(name: newPlaylistName)
             }
             Button("Cancel", role: .cancel) {}
         }
-        .playlistRenameAlert($rename)
-        .playlistDeleteConfirmation(for: $playlistPendingDelete)
+        .playlistRenameAlert($rename, coordinator: coordinator)
+        .playlistDeleteConfirmation(for: $playlistPendingDelete, coordinator: coordinator)
     }
 
     private func row(for playlist: Playlist) -> some View {

@@ -11,7 +11,6 @@ struct PlaylistDetailView: View {
     let coordinator: LibraryCoordinator
 
     @Query private var availableTracks: [Track]
-    @Environment(\.modelContext) private var modelContext
 
     init(playlist: Playlist, coordinator: LibraryCoordinator) {
         self.playlist = playlist
@@ -51,10 +50,10 @@ struct PlaylistDetailView: View {
                             }
                         }
                         .onMove { source, destination in
-                            PlaylistOps.moveEntries(from: source, to: destination, in: playlist, in: modelContext)
+                            coordinator.playlists.moveEntries(from: source, to: destination, in: playlist)
                         }
                         .onDelete { offsets in
-                            PlaylistOps.removeEntries(at: offsets, from: playlist, in: modelContext)
+                            coordinator.playlists.removeEntries(at: offsets, from: playlist)
                         }
                     }
                 }

@@ -100,7 +100,7 @@ struct SongsListView: View {
             }
         }
         .importReportAlert(coordinator.importer)
-        .addToPlaylistSheet(for: $trackPendingPlaylistAdd)
+        .addToPlaylistSheet(for: $trackPendingPlaylistAdd, coordinator: coordinator)
         .libraryDeletionConfirmation(request: $deletionRequest, coordinator: coordinator)
     }
 

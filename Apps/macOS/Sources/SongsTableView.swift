@@ -224,12 +224,12 @@ struct SongsTableView: View {
 
     private func addToPlaylist(_ playlist: Playlist, ids: Set<PersistentIdentifier>) {
         for track in orderedTracks(matching: ids) {
-            PlaylistOps.add(track, to: playlist, in: modelContext)
+            coordinator.playlists.add(track, to: playlist)
         }
     }
 
     private func addToNewPlaylist(_ ids: Set<PersistentIdentifier>) {
-        let playlist = PlaylistOps.create(name: "New Playlist", in: modelContext)
+        let playlist = coordinator.playlists.create(name: "New Playlist")
         addToPlaylist(playlist, ids: ids)
     }
 
