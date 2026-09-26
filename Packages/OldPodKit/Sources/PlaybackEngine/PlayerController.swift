@@ -157,7 +157,7 @@ public final class PlayerController {
             pause()
             saveProgress()
         } else {
-            if player.currentItem?.status == .failed {
+            if player.currentItem == nil || player.currentItem?.status == .failed {
                 let retryTime = currentTime
                 syncPlayerItems(fullRebuild: true)
                 if retryTime > 0 { seek(to: retryTime) }
@@ -457,18 +457,13 @@ public final class PlayerController {
             player.pause()
             isPlaying = false
             resetPosition(duration: 0)
-            removeEndOfItemObserver()
-            player.removeAllItems()
-            itemTracks.removeAll()
-            itemStatusObservations.removeAll()
+            clearPlayerItems()
             return
         }
 
         if fullRebuild {
             resetPosition(duration: current.duration)
-            player.removeAllItems()
-            itemTracks.removeAll()
-            itemStatusObservations.removeAll()
+            clearPlayerItems()
             enqueueCurrent(current)
         } else if let head = player.items().first {
             // Keep the currently playing item; only touch what comes after it.
@@ -484,6 +479,13 @@ public final class PlayerController {
             player.insert(nextItem, after: player.items().first)
             observeStatus(of: nextItem)
         }
+    }
+
+    private func clearPlayerItems() {
+        removeEndOfItemObserver()
+        player.removeAllItems()
+        itemTracks.removeAll()
+        itemStatusObservations.removeAll()
     }
 
     private func enqueueCurrent(_ track: PlayableTrack) {
@@ -688,12 +690,11 @@ public final class PlayerController {
             }
             Self.logger.error("Playing item failed; skipping to next track.")
             guard queue.upNext(repeatMode: repeatMode) != nil else {
-                // Nothing to skip to: stop cleanly rather than leaving
-                // `isPlaying` set over a track that will never play.
+                // Nothing to skip to. Park on the track with no player item:
+                // re-arming the same file would fail again, forever.
                 pause()
-                syncPlayerItems(fullRebuild: true)
-                player.seek(to: .zero)
-                currentTime = 0
+                clearPlayerItems()
+                resetPosition(duration: current?.duration ?? 0)
                 saveProgress()
                 return
             }

@@ -16,10 +16,10 @@ final class SearchUITests: XCTestCase {
         searchField.tap()
         searchField.typeText("Three")
 
-        assertExists(app.staticTexts["Fixture Three"], "search for \"Three\" should show Fixture Three")
-        XCTAssertFalse(app.staticTexts["Fixture One"].exists, "Fixture One should be filtered out")
-        XCTAssertFalse(app.staticTexts["Fixture Two"].exists, "Fixture Two should be filtered out")
-        XCTAssertFalse(app.staticTexts["untagged"].exists, "untagged should be filtered out")
+        assertExists(listText(app, "Fixture Three"), "search for \"Three\" should show Fixture Three")
+        XCTAssertFalse(listText(app, "Fixture One").exists, "Fixture One should be filtered out")
+        XCTAssertFalse(listText(app, "Fixture Two").exists, "Fixture Two should be filtered out")
+        XCTAssertFalse(listText(app, "untagged").exists, "untagged should be filtered out")
         attachScreenshot(app, name: "search-three")
 
         if searchField.buttons["Clear text"].exists {
@@ -29,7 +29,7 @@ final class SearchUITests: XCTestCase {
         }
 
         for title in ["Fixture One", "Fixture Three", "Fixture Two", "untagged"] {
-            assertExists(app.staticTexts[title], "clearing search should restore \(title)")
+            assertExists(listText(app, title), "clearing search should restore \(title)")
         }
         attachScreenshot(app, name: "search-cleared")
     }

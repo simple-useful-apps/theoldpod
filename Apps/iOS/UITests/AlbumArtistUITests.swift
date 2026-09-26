@@ -18,9 +18,9 @@ final class AlbumArtistUITests: XCTestCase {
         albumCell.tap()
 
         assertExists(app.navigationBars["Test Tones"])
-        assertExists(app.staticTexts["Fixture One"], "Test Tones should contain Fixture One")
-        assertExists(app.staticTexts["Fixture Two"], "Test Tones should contain Fixture Two")
-        XCTAssertFalse(app.staticTexts["Fixture Three"].exists, "Test Tones should not contain Fixture Three")
+        assertExists(listText(app, "Fixture One"), "Test Tones should contain Fixture One")
+        assertExists(listText(app, "Fixture Two"), "Test Tones should contain Fixture Two")
+        XCTAssertFalse(listText(app, "Fixture Three").exists, "Test Tones should not contain Fixture Three")
         assertExists(app.staticTexts["1"], "track 1 should show its track number")
         assertExists(app.staticTexts["2"], "track 2 should show its track number")
         attachScreenshot(app, name: "album-detail-test-tones")
@@ -44,18 +44,18 @@ final class AlbumArtistUITests: XCTestCase {
         app.launch()
 
         app.tabBars.buttons["Artists"].tap()
-        let artistRow = app.staticTexts["The Fixtures"]
+        let artistRow = listText(app, "The Fixtures")
         assertExists(artistRow)
         artistRow.tap()
 
         assertExists(app.navigationBars["The Fixtures"])
-        let albumRow = app.staticTexts["Test Tones"]
+        let albumRow = listText(app, "Test Tones")
         assertExists(albumRow, "The Fixtures artist screen should list Test Tones")
         albumRow.tap()
 
         assertExists(app.navigationBars["Test Tones"])
-        assertExists(app.staticTexts["Fixture One"])
-        assertExists(app.staticTexts["Fixture Two"])
+        assertExists(listText(app, "Fixture One"))
+        assertExists(listText(app, "Fixture Two"))
         attachScreenshot(app, name: "artist-to-album-detail")
     }
 
