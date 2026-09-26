@@ -85,6 +85,17 @@ struct LibraryGroupsTests {
         #expect(artists.map(\.name) == ["Aardvark", "The Fixtures", "Foo Fighters"])
     }
 
+    @Test func artistsSortIgnoringDiacritics() {
+        let context = makeContext()
+        let zebras = insert(context, title: "Song", artist: "Zebras")
+        let emile = insert(context, title: "Song", artist: "Émile")
+        let drone = insert(context, title: "Song", artist: "Drone Unit")
+
+        let artists = LibraryGroups.artists(from: [zebras, emile, drone])
+
+        #expect(artists.map(\.name) == ["Drone Unit", "Émile", "Zebras"])
+    }
+
     @Test func albumYearIsTheMinimumNonNilYearAcrossItsTracks() {
         let context = makeContext()
         let a = insert(context, title: "A", artist: "Band", album: "Anthology", year: 2005)

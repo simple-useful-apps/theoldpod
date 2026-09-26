@@ -44,6 +44,53 @@ struct PlayerControllerIntegrationTests {
         controller.stop()
     }
 
+    @Test func unplayableEmptyFileIsSkippedToTheNextQueuedTrack() async throws {
+        let controller = PlayerController()
+        let empty = try makeUnplayableTrack(named: "empty.mp3", contents: Data())
+        let cbr = try await makePlayableTrack(fixture: "cbr-tagged.mp3")
+
+        controller.play([empty, cbr])
+
+        try await poll(timeout: .seconds(3)) { controller.current == cbr }
+
+        #expect(controller.isPlaying)
+        #expect(controller.current == cbr)
+
+        controller.stop()
+    }
+
+    @Test func corruptRandomBytesFileIsSkippedToTheNextQueuedTrack() async throws {
+        let controller = PlayerController()
+        let corrupt = try makeUnplayableTrack(named: "corrupt.mp3", contents: randomBytes(count: 50000))
+        let cbr = try await makePlayableTrack(fixture: "cbr-tagged.mp3")
+
+        controller.play([corrupt, cbr])
+
+        try await poll(timeout: .seconds(3)) { controller.current == cbr }
+
+        #expect(controller.isPlaying)
+        #expect(controller.current == cbr)
+
+        controller.stop()
+    }
+
+    /// When the unplayable track is the last (only) one in the queue, there's
+    /// nothing to skip to. Playback should stop cleanly rather than leaving
+    /// `isPlaying` stuck `true` forever over a track that will never play.
+    @Test func unplayableTrackAtEndOfQueueStopsPlaybackCleanly() async throws {
+        let controller = PlayerController()
+        let empty = try makeUnplayableTrack(named: "empty.mp3", contents: Data())
+
+        controller.play([empty])
+
+        try await poll(timeout: .seconds(3)) { !controller.isPlaying }
+
+        #expect(!controller.isPlaying)
+        #expect(controller.current == empty)
+
+        controller.stop()
+    }
+
     @Test func repeatOffStopsPlaybackAtTheEndOfTheQueue() async throws {
         let controller = PlayerController()
         let cbr = try await makePlayableTrack(fixture: "cbr-tagged.mp3")
@@ -87,6 +134,35 @@ private func poll(
     }
     if condition() { return }
     throw PollTimeout()
+}
+
+/// Writes `contents` to a fresh temp-directory file named `name` and wraps it
+/// as a `PlayableTrack` — used to reproduce unplayable files (empty, or
+/// garbage bytes) without adding anything to `Fixtures/`.
+private func makeUnplayableTrack(named name: String, contents: Data) throws -> PlayableTrack {
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let url = dir.appendingPathComponent(name)
+    try contents.write(to: url)
+    return PlayableTrack(
+        relativePath: name,
+        url: url,
+        title: name,
+        artist: "Artist",
+        album: "Album",
+        duration: 0,
+        artworkID: nil
+    )
+}
+
+private func randomBytes(count: Int) -> Data {
+    var data = Data(count: count)
+    data.withUnsafeMutableBytes { buffer in
+        for i in 0 ..< buffer.count {
+            buffer[i] = UInt8.random(in: .min ... .max)
+        }
+    }
+    return data
 }
 
 /// Builds a `PlayableTrack` from a fixture file, loading its real duration
