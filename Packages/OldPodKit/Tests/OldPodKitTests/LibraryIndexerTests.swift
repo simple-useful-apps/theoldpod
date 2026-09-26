@@ -80,7 +80,11 @@ struct LibraryIndexerTests {
         let (indexer, context, _, tempDirectory) = try makeIndexer()
         defer { try? FileManager.default.removeItem(at: tempDirectory) }
 
-        let url = TestFixtures.url("cbr-tagged.mp3")
+        // A private copy, so its on-disk modification date can really change:
+        // the indexer re-checks the file's current version before committing
+        // and ignores a change whose stat no longer matches the disk.
+        let url = tempDirectory.appendingPathComponent("cbr-tagged.mp3")
+        try FileManager.default.copyItem(at: TestFixtures.url("cbr-tagged.mp3"), to: url)
         let originalModified = try fileModified(url)
         let file = try LibraryFile(
             relativePath: "cbr-tagged.mp3", url: url, size: fileSize(url), modified: originalModified
@@ -94,11 +98,16 @@ struct LibraryIndexerTests {
         track.title = "Mutated Title"
         try context.save()
 
+        let changedModified = originalModified.addingTimeInterval(1)
+        try FileManager.default.setAttributes([.modificationDate: changedModified], ofItemAtPath: url.path)
+        // A fresh URL, as the watcher would hand over: the original caches
+        // its resource values and would still report the old date.
+        let changedURL = URL(fileURLWithPath: url.path)
         let changedFile = try LibraryFile(
             relativePath: "cbr-tagged.mp3",
-            url: url,
-            size: fileSize(url),
-            modified: originalModified.addingTimeInterval(1)
+            url: changedURL,
+            size: fileSize(changedURL),
+            modified: fileModified(changedURL)
         )
         await indexer.apply([.upsert(changedFile)])
 
@@ -110,7 +119,11 @@ struct LibraryIndexerTests {
         let (indexer, context, _, tempDirectory) = try makeIndexer()
         defer { try? FileManager.default.removeItem(at: tempDirectory) }
 
-        let url = TestFixtures.url("cbr-tagged.mp3")
+        // A private copy, so its on-disk modification date can really change:
+        // the indexer re-checks the file's current version before committing
+        // and ignores a change whose stat no longer matches the disk.
+        let url = tempDirectory.appendingPathComponent("cbr-tagged.mp3")
+        try FileManager.default.copyItem(at: TestFixtures.url("cbr-tagged.mp3"), to: url)
         let originalModified = try fileModified(url)
         let file = try LibraryFile(
             relativePath: "cbr-tagged.mp3", url: url, size: fileSize(url), modified: originalModified
@@ -125,11 +138,16 @@ struct LibraryIndexerTests {
         #expect(insertedAddedAt >= beforeInsert.addingTimeInterval(-1))
         #expect(insertedAddedAt <= afterInsert.addingTimeInterval(1))
 
+        let changedModified = originalModified.addingTimeInterval(1)
+        try FileManager.default.setAttributes([.modificationDate: changedModified], ofItemAtPath: url.path)
+        // A fresh URL, as the watcher would hand over: the original caches
+        // its resource values and would still report the old date.
+        let changedURL = URL(fileURLWithPath: url.path)
         let changedFile = try LibraryFile(
             relativePath: "cbr-tagged.mp3",
-            url: url,
-            size: fileSize(url),
-            modified: originalModified.addingTimeInterval(1)
+            url: changedURL,
+            size: fileSize(changedURL),
+            modified: fileModified(changedURL)
         )
         await indexer.apply([.upsert(changedFile)])
 
@@ -165,9 +183,12 @@ struct LibraryIndexerTests {
         let (indexer, context, _, tempDirectory) = try makeIndexer()
         defer { try? FileManager.default.removeItem(at: tempDirectory) }
 
+        // Present on disk but not decodable audio. (A file that no longer
+        // exists is deliberately skipped: its removal is on its way.)
         let missingURL = tempDirectory.appendingPathComponent("does-not-exist.mp3")
-        let missingFile = LibraryFile(
-            relativePath: "does-not-exist.mp3", url: missingURL, size: 0, modified: Date()
+        try Data("not audio".utf8).write(to: missingURL)
+        let missingFile = try LibraryFile(
+            relativePath: "does-not-exist.mp3", url: missingURL, size: fileSize(missingURL), modified: fileModified(missingURL)
         )
 
         let validURL = TestFixtures.url("cbr-tagged.mp3")

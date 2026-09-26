@@ -98,14 +98,14 @@ public enum PlaylistFileFormat {
     /// The full sanitization contract for a playlist file's stem: trim
     /// surrounding whitespace/newlines, then remove every "/" and ":"
     /// character (both are path separators on one Apple platform or
-    /// another). An empty result becomes "Playlist". Because this is a
-    /// many-to-one mapping, two playlist names that sanitize to the same
-    /// filename share one file — the file, not either name, wins on the next
-    /// reconcile, so in effect the two playlists merge.
+    /// another). Remove newlines and leading dots so names cannot create
+    /// hidden files. An empty result becomes "New Playlist". PlaylistOps
+    /// adds a numbered suffix when this name is already occupied.
     public static func sanitizedFilename(for name: String) -> String {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        let stripped = trimmed.filter { $0 != "/" && $0 != ":" }
-        return stripped.isEmpty ? "Playlist" : stripped
+        let stripped = trimmed.filter { $0 != "/" && $0 != ":" && !$0.isNewline }
+            .trimmingCharacters(in: CharacterSet(charactersIn: ". "))
+        return stripped.isEmpty ? "New Playlist" : stripped
     }
 
     private static func stem(of trackPath: String) -> String {

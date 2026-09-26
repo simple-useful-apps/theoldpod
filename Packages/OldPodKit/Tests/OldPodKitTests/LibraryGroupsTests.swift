@@ -152,6 +152,7 @@ struct LibraryGroupsTests {
 @MainActor
 private func makeContext() -> ModelContext {
     let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
+    // swiftlint:disable:next force_try
     let container = try! ModelContainer(for: Schema(LibrarySchema.models), configurations: [configuration])
     return ModelContext(container)
 }

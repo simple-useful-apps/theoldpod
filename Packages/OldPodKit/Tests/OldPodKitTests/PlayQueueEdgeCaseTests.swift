@@ -288,8 +288,8 @@ struct PlayQueueEdgeCaseTests {
         var generator = SeededGenerator(seed: 77)
         queue.setShuffled(true, using: &generator)
         #expect(queue.items.count == 3)
-        #expect(queue.items.filter { $0 == a }.count == 2)
-        #expect(queue.items.filter { $0 == b }.count == 1)
+        #expect(queue.items.count(where: { $0 == a }) == 2)
+        #expect(queue.items.count(where: { $0 == b }) == 1)
 
         queue.setShuffled(false, using: &generator)
         #expect(queue.items == [a, a, b])

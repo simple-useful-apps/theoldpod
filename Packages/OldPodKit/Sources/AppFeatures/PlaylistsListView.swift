@@ -6,7 +6,7 @@ import SwiftUI
 /// row pushes `PlaylistDetailView`. New playlists are created from the
 /// toolbar "+"; existing ones can be renamed or deleted via swipe or
 /// context menu.
-public struct PlaylistsListView: View {
+struct PlaylistsListView: View {
     @Query(sort: \Playlist.createdAt) private var playlists: [Playlist]
     @Environment(\.modelContext) private var modelContext
 
@@ -14,15 +14,16 @@ public struct PlaylistsListView: View {
 
     @State private var isPresentingNewPlaylistAlert = false
     @State private var newPlaylistName = ""
+    @State private var searchText = ""
 
     @State private var renamingPlaylist: Playlist?
     @State private var renameText = ""
 
-    public init(coordinator: LibraryCoordinator) {
+    init(coordinator: LibraryCoordinator) {
         self.coordinator = coordinator
     }
 
-    public var body: some View {
+    var body: some View {
         Group {
             if playlists.isEmpty {
                 ContentUnavailableView(
@@ -32,7 +33,7 @@ public struct PlaylistsListView: View {
                 )
             } else {
                 List {
-                    ForEach(playlists) { playlist in
+                    ForEach(playlists.filter { searchText.isEmpty || $0.name.localizedStandardContains(searchText) }) { playlist in
                         NavigationLink {
                             PlaylistDetailView(playlist: playlist, coordinator: coordinator)
                         } label: {
@@ -63,7 +64,15 @@ public struct PlaylistsListView: View {
                 .listStyle(.plain)
             }
         }
+        .searchable(text: $searchText, prompt: "Search Playlists")
+        .overlay {
+            if !playlists.isEmpty, !searchText.isEmpty, !playlists.contains(where: { $0.name.localizedStandardContains(searchText) }) {
+                ContentUnavailableView.search(text: searchText)
+            }
+        }
+        .refreshable { await coordinator.refreshLibrary() }
         .toolbar {
+            ToolbarItem(placement: .automatic) { LibraryStatusButton(coordinator: coordinator) }
             ToolbarItem(placement: .primaryAction) {
                 Button {
                     newPlaylistName = ""

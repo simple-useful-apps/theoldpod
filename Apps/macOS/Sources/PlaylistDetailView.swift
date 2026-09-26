@@ -19,6 +19,7 @@ struct PlaylistDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var allTracks: [Track]
     @State private var selection: Set<PersistentIdentifier> = []
+    @State private var metadataEditor: MetadataEditorPresentation?
 
     init(playlist: Playlist, coordinator: LibraryCoordinator) {
         self.playlist = playlist
@@ -71,6 +72,10 @@ struct PlaylistDetailView: View {
                 list(tracksByPath: tracksByPath)
             }
         }
+        .focusedSceneValue(\.getInfoAction, getInfoAction)
+        .sheet(item: $metadataEditor) { request in
+            MetadataEditorView(relativePath: request.relativePath, coordinator: coordinator)
+        }
     }
 
     private func header(resolvedEntries: [(entry: PlaylistEntry, track: Track)]) -> some View {
@@ -109,6 +114,9 @@ struct PlaylistDetailView: View {
             Button("Play") { play(ids) }
             Button("Play Next") { playNext(ids) }
             Button("Add to Queue") { addToQueue(ids) }
+            Divider()
+            Button("Get Info") { openInfo(for: ids) }
+                .disabled(editableTrack(for: ids) == nil)
             Divider()
             Button("Remove from Playlist", role: .destructive) { removeEntries(ids) }
         } primaryAction: { ids in
@@ -201,6 +209,21 @@ struct PlaylistDetailView: View {
 
     private func addToQueue(_ ids: Set<PersistentIdentifier>) {
         coordinator.enqueue(tracks(matching: ids))
+    }
+
+    private var getInfoAction: (@MainActor () -> Void)? {
+        guard editableTrack(for: selection) != nil else { return nil }
+        return { openInfo(for: selection) }
+    }
+
+    private func editableTrack(for ids: Set<PersistentIdentifier>) -> Track? {
+        guard ids.count == 1, let track = tracks(matching: ids).first, track.isDownloaded else { return nil }
+        return track
+    }
+
+    private func openInfo(for ids: Set<PersistentIdentifier>) {
+        guard let track = editableTrack(for: ids) else { return }
+        metadataEditor = MetadataEditorPresentation(relativePath: track.relativePath)
     }
 
     private func removeEntries(_ ids: Set<PersistentIdentifier>) {

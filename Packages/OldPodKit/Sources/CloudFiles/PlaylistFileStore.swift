@@ -24,14 +24,17 @@ public struct PlaylistFileStore: Sendable {
     /// thrown — a playlist edit that can't be persisted to disk shouldn't
     /// crash the app; the in-memory SwiftData state is still correct until
     /// the next reconcile.
-    public func write(name: String, entries: [PlaylistFileEntry]) {
+    @discardableResult
+    public func write(name: String, entries: [PlaylistFileEntry]) -> Bool {
         do {
             try ensureDirectoryExists()
             let text = PlaylistFileFormat.serialize(entries)
             let url = fileURL(for: name)
             try Data(text.utf8).write(to: url, options: .atomic)
+            return true
         } catch {
             Self.logger.warning("PlaylistFileStore: failed to write playlist \(name, privacy: .public): \(error, privacy: .public)")
+            return false
         }
     }
 
@@ -43,17 +46,17 @@ public struct PlaylistFileStore: Sendable {
     /// Every `.m3u8` file in the directory, keyed by its filename stem
     /// (verbatim — not re-sanitized, since it's already a valid filename)
     /// and parsed into entries. Matches the extension case-insensitively and
-    /// skips hidden files. Empty (rather than throwing) if the directory
-    /// doesn't exist yet.
-    public func readAll() -> [String: [PlaylistFileEntry]] {
-        guard let urls = try? FileManager.default.contentsOfDirectory(
+    /// skips hidden files. A failed read throws: callers must not interpret
+    /// unavailable files as deleted playlists.
+    public func readAll() throws -> [String: [PlaylistFileEntry]] {
+        let urls = try FileManager.default.contentsOfDirectory(
             at: directory, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]
-        ) else { return [:] }
+        )
 
         var result: [String: [PlaylistFileEntry]] = [:]
         for url in urls {
             guard url.pathExtension.lowercased() == PlaylistFileFormat.fileExtension else { continue }
-            guard let text = try? String(contentsOf: url, encoding: .utf8) else { continue }
+            let text = try String(contentsOf: url, encoding: .utf8)
             result[url.deletingPathExtension().lastPathComponent] = PlaylistFileFormat.parse(text)
         }
         return result

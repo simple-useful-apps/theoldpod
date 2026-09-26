@@ -55,6 +55,9 @@ struct SongsTableView: View {
     @State private var sortOrder: [KeyPathComparator<SongTableRow>]
     @State private var searchText = ""
     @State private var selection: Set<PersistentIdentifier> = []
+    @State private var deletionRequest: LibraryDeletionRequest?
+    @State private var pendingDeletionIDs: [String: PersistentIdentifier] = [:]
+    @State private var metadataEditor: MetadataEditorPresentation?
 
     init(
         coordinator: LibraryCoordinator,
@@ -62,13 +65,13 @@ struct SongsTableView: View {
         initialSortOrder: [KeyPathComparator<SongTableRow>] = [KeyPathComparator(\.title, order: .forward)]
     ) {
         self.coordinator = coordinator
-        self.filter = filter
+        self.filter = { !$0.isAudiobook && filter($0) }
         _sortOrder = State(initialValue: initialSortOrder)
     }
 
     var body: some View {
         Group {
-            if tracks.isEmpty {
+            if !tracks.contains(where: filter) {
                 ContentUnavailableView(
                     "No Music Yet",
                     systemImage: "music.note",
@@ -84,6 +87,21 @@ struct SongsTableView: View {
             }
         }
         .searchable(text: $searchText, prompt: "Search")
+        .onDeleteCommand {
+            requestDeletion(for: selection)
+        }
+        .focusedSceneValue(\.getInfoAction, getInfoAction)
+        .sheet(item: $metadataEditor) { request in
+            MetadataEditorView(relativePath: request.relativePath, coordinator: coordinator)
+        }
+        .libraryDeletionConfirmation(
+            request: $deletionRequest,
+            coordinator: coordinator
+        ) { completion in
+            let succeeded = completion.succeededSongPaths
+            selection.subtract(Set(succeeded.compactMap { pendingDeletionIDs[$0] }))
+            pendingDeletionIDs = [:]
+        }
     }
 
     private func table(for rows: [SongTableRow]) -> some View {
@@ -129,6 +147,11 @@ struct SongsTableView: View {
                 }
                 Button("New Playlist\u{2026}") { addToNewPlaylist(ids) }
             }
+            Divider()
+            Button("Get Info") { openInfo(for: ids) }
+                .disabled(editableTrack(for: ids) == nil)
+            Divider()
+            Button("Delete", role: .destructive) { requestDeletion(for: ids) }
         } primaryAction: { ids in
             playFromVisibleOrder(clicked: ids)
         }
@@ -193,5 +216,28 @@ struct SongsTableView: View {
     private func addToNewPlaylist(_ ids: Set<PersistentIdentifier>) {
         let playlist = PlaylistOps.create(name: "New Playlist", in: modelContext)
         addToPlaylist(playlist, ids: ids)
+    }
+
+    private var getInfoAction: (@MainActor () -> Void)? {
+        guard editableTrack(for: selection) != nil else { return nil }
+        return { openInfo(for: selection) }
+    }
+
+    private func editableTrack(for ids: Set<PersistentIdentifier>) -> Track? {
+        guard ids.count == 1, let track = orderedTracks(matching: ids).first, track.isDownloaded else { return nil }
+        return track
+    }
+
+    private func openInfo(for ids: Set<PersistentIdentifier>) {
+        guard let track = editableTrack(for: ids) else { return }
+        metadataEditor = MetadataEditorPresentation(relativePath: track.relativePath)
+    }
+
+    private func requestDeletion(for ids: Set<PersistentIdentifier>) {
+        let selectedTracks = orderedTracks(matching: ids)
+        let targets = selectedTracks.map(SongDeletionTarget.init(track:))
+        guard !targets.isEmpty else { return }
+        pendingDeletionIDs = Dictionary(uniqueKeysWithValues: selectedTracks.map { ($0.relativePath, $0.persistentModelID) })
+        deletionRequest = .songs(targets)
     }
 }

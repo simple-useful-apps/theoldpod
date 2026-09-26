@@ -16,7 +16,8 @@ public struct DurationText: View {
     }
 
     /// Formats as `m:ss`, or `h:mm:ss` once the duration reaches one hour.
-    public static func format(_ interval: TimeInterval) -> String {
+    public nonisolated static func format(_ interval: TimeInterval) -> String {
+        guard interval.isFinite, interval >= 0, interval < Double(Int.max) else { return "0:00" }
         let totalSeconds = Int(interval.rounded())
         let hours = totalSeconds / 3600
         let minutes = (totalSeconds % 3600) / 60

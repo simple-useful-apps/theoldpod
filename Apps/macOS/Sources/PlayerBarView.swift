@@ -19,7 +19,11 @@ struct PlayerBarView: View {
                 Spacer(minLength: 12)
                 lcd
                 Spacer(minLength: 12)
-                rightCluster
+                if player.current?.bookID != nil {
+                    ListeningControls(player: player)
+                } else {
+                    rightCluster
+                }
             }
             // Hard minimum: the LCD (title + artist + inline scrubber) needs
             // ~54pt of content height; ideal-size negotiation under the
@@ -48,7 +52,7 @@ struct PlayerBarView: View {
             Button {
                 player.togglePlayPause()
             } label: {
-                Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                PlayPauseSymbol(isPlaying: player.isPlaying)
                     .font(.system(size: 28))
                     .frame(width: 28)
             }
@@ -70,8 +74,13 @@ struct PlayerBarView: View {
     private var lcd: some View {
         if let current = player.current {
             HStack(spacing: 10) {
-                ArtworkImage(artworkID: current.artworkID, directory: artworkDirectory, pointSize: 40)
-                    .frame(width: 40, height: 40)
+                ArtworkImage(
+                    artworkID: current.artworkID,
+                    directory: artworkDirectory,
+                    pointSize: 40,
+                    placeholderSystemName: current.bookID != nil ? "book.closed" : "music.note"
+                )
+                .frame(width: 40, height: 40)
 
                 VStack(alignment: .leading, spacing: 2) {
                     // Identified for UI tests: the same title text is also
@@ -83,13 +92,10 @@ struct PlayerBarView: View {
                         .font(.callout)
                         .lineLimit(1)
                         .accessibilityIdentifier("playerBarTitle")
-                    Text(
-                        "\(current.artist.isEmpty ? "Unknown Artist" : current.artist) · " +
-                            (current.album.isEmpty ? "Unknown Album" : current.album)
-                    )
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                    Text(current.subtitle)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
 
                     ScrubberView(player: player, style: .inline)
                         .controlSize(.small)
@@ -112,6 +118,7 @@ struct PlayerBarView: View {
                 Image(systemName: "shuffle")
             }
             .accessibilityLabel("Shuffle")
+            .accessibilityValue(player.isShuffled ? "On" : "Off")
             .foregroundStyle(player.isShuffled ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
 
             Button {
@@ -120,6 +127,7 @@ struct PlayerBarView: View {
                 Image(systemName: player.repeatMode == .one ? "repeat.1" : "repeat")
             }
             .accessibilityLabel("Repeat")
+            .accessibilityValue(player.repeatMode.rawValue)
             .foregroundStyle(player.repeatMode != .off ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
         }
         .buttonStyle(.borderless)

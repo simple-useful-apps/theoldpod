@@ -50,10 +50,14 @@ final class AudioSessionCoordinator {
     func ensureActive() {
         #if os(iOS)
             guard !didActivate else { return }
-            didActivate = true
             let session = AVAudioSession.sharedInstance()
-            try? session.setCategory(.playback, mode: .default)
-            try? session.setActive(true)
+            do {
+                try session.setCategory(.playback, mode: .default)
+                try session.setActive(true)
+                didActivate = true
+            } catch {
+                didActivate = false
+            }
         #endif
     }
 
@@ -67,6 +71,7 @@ final class AudioSessionCoordinator {
 
             switch type {
             case .began:
+                didActivate = false
                 onPauseRequested?()
             case .ended:
                 let optionsValue = info[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0

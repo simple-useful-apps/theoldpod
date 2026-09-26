@@ -1,0 +1,48 @@
+FFmpeg 8.1.2 is built separately for arm64 and x86_64, then combined with
+Apple's lipo tool. The exact configure arguments are maintained by
+scripts/build-wma-helper.sh and reproduced below for compliance and auditing.
+
+--disable-everything
+--disable-autodetect
+--disable-network
+--disable-doc
+--disable-debug
+--disable-shared
+--enable-static
+--disable-gpl
+--disable-nonfree
+--disable-programs
+--enable-ffmpeg
+--enable-avcodec
+--enable-avformat
+--enable-avutil
+--enable-avfilter
+--enable-swresample
+--enable-zlib
+--enable-protocol=file
+--enable-demuxer=asf
+--enable-demuxer=mov
+--enable-demuxer=mp3
+--enable-decoder=wmav1
+--enable-decoder=wmav2
+--enable-decoder=wmapro
+--enable-decoder=wmalossless
+--enable-decoder=mjpeg
+--enable-decoder=png
+--enable-parser=mjpeg
+--enable-parser=png
+--enable-encoder=aac
+--enable-muxer=mp4
+--enable-muxer=mp3
+--enable-filter=aformat
+--enable-filter=aresample
+--enable-small
+
+Architecture-specific arguments:
+
+--target-os=darwin
+--arch=<arm64 or x86_64>
+--cc=xcrun clang -arch <architecture>
+--extra-ldflags=-arch <architecture>
+--enable-cross-compile (x86_64 slice only when built on Apple silicon)
+--disable-x86asm (x86_64 slice, avoiding any external assembler dependency)

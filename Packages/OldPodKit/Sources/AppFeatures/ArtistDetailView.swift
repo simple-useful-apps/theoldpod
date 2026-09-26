@@ -4,16 +4,11 @@ import SwiftUI
 /// An artist's detail screen: their albums, sorted by year then title (per
 /// `LibraryGroups.artists(from:)`), as small artwork rows. Tapping a row
 /// pushes `AlbumDetailView` for that album.
-public struct ArtistDetailView: View {
+struct ArtistDetailView: View {
     let artist: ArtistGroup
     let coordinator: LibraryCoordinator
 
-    public init(artist: ArtistGroup, coordinator: LibraryCoordinator) {
-        self.artist = artist
-        self.coordinator = coordinator
-    }
-
-    public var body: some View {
+    var body: some View {
         List(artist.albums) { album in
             NavigationLink {
                 AlbumDetailView(album: album, coordinator: coordinator)

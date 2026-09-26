@@ -3,13 +3,28 @@ DD  := .build/DerivedData
 IOS_APP := $(DD)/Build/Products/Debug-iphonesimulator/TheOldPod.app
 MAC_APP := $(DD)/Build/Products/Debug/TheOldPod.app
 
-.PHONY: gen test ios run-ios screenshot uitest mac-uitest mac run-mac clean
+.PHONY: gen test lint format deadcode ios run-ios screenshot uitest mac-uitest mac run-mac clean
 
 gen:
 	xcodegen generate
 
 test:
 	swift test --package-path Packages/OldPodKit
+
+# Style + complexity checks (read-only). Needs `brew install swiftlint swiftformat`.
+lint:
+	swiftformat Apps Packages/OldPodKit/Sources Packages/OldPodKit/Tests --lint
+	swiftlint lint --quiet
+
+format:
+	swiftformat Apps Packages/OldPodKit/Sources Packages/OldPodKit/Tests
+
+# Unused-code report via Periphery (`brew install periphery`). Package tests
+# aren't in the Xcode schemes, so test-only API shows up as unused; check
+# both platforms before deleting anything.
+deadcode:
+	periphery scan --project TheOldPod.xcodeproj --schemes TheOldPod-macOS \
+		--retain-swift-ui-previews --retain-codable-properties --relative-results
 
 ios:
 	xcodebuild -project TheOldPod.xcodeproj -scheme TheOldPod-iOS \

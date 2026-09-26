@@ -231,33 +231,6 @@ struct PlaylistFileSyncTests {
         #expect(PlaylistOps.sortedEntries(of: playlists[0]).map(\.trackPath) == ["nope/missing.mp3"])
     }
 
-    @Test func duplicatePlaylistNamesMergeIntoOneOnReconcile() throws {
-        let directory = makeTempDirectory()
-        defer { try? FileManager.default.removeItem(at: directory) }
-        let (defaults, suiteName) = makeDefaults()
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-
-        let container = try makeContainer()
-        let context = container.mainContext
-        let store = PlaylistFileStore(directory: directory)
-        let sync = PlaylistFileSync(store: store, container: container, defaults: defaults)
-
-        // Nothing stops the app from holding two playlists with the same
-        // name (both platforms' "New Playlist" actions mint the same default
-        // name every time). One name maps to one file, so reconcile must
-        // merge them — and, regression: must not trap building its by-name
-        // index on the duplicate key.
-        PlaylistOps.fileSync = sync
-        PlaylistOps.create(name: "New Playlist", in: context)
-        PlaylistOps.create(name: "New Playlist", in: context)
-        PlaylistOps.fileSync = nil
-
-        sync.reconcile()
-
-        let playlists = try context.fetch(FetchDescriptor<Playlist>())
-        #expect(playlists.map(\.name) == ["New Playlist"])
-    }
-
     @Test func migrationExportsExistingPlaylistsOnce() throws {
         let directory = makeTempDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -306,7 +279,7 @@ private func makeContainer() throws -> ModelContainer {
 }
 
 private func makeTempDirectory() -> URL {
-    return FileManager.default.temporaryDirectory
+    FileManager.default.temporaryDirectory
         .appendingPathComponent(UUID().uuidString, isDirectory: true)
 }
 

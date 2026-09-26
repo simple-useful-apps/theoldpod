@@ -7,4 +7,5 @@ public protocol LibraryFolderWatching: Sendable {
     /// folder empty). Subsequent emissions are diffs.
     func changes() -> AsyncStream<[LibraryChange]>
     func stop()
+    func refresh() async throws
 }

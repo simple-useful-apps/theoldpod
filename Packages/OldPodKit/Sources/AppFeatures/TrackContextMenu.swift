@@ -5,18 +5,25 @@ import SwiftUI
 /// row's context menu (`SongsListView`, `AlbumDetailView`). `onAddToPlaylist`
 /// is left to the caller, which owns the `trackPendingPlaylistAdd` state that
 /// drives its own `.addToPlaylistSheet(for:)`.
-public struct TrackContextMenuContent: View {
+struct TrackContextMenuContent: View {
     let track: Track
     let coordinator: LibraryCoordinator
+    let onDelete: (() -> Void)?
     let onAddToPlaylist: () -> Void
 
-    public init(track: Track, coordinator: LibraryCoordinator, onAddToPlaylist: @escaping () -> Void) {
+    init(
+        track: Track,
+        coordinator: LibraryCoordinator,
+        onDelete: (() -> Void)? = nil,
+        onAddToPlaylist: @escaping () -> Void
+    ) {
         self.track = track
         self.coordinator = coordinator
+        self.onDelete = onDelete
         self.onAddToPlaylist = onAddToPlaylist
     }
 
-    public var body: some View {
+    var body: some View {
         Button {
             coordinator.playNext([track])
         } label: {
@@ -31,6 +38,13 @@ public struct TrackContextMenuContent: View {
 
         Button(action: onAddToPlaylist) {
             Label("Add to Playlist…", systemImage: "music.note.list")
+        }
+
+        if let onDelete {
+            Divider()
+            Button(role: .destructive, action: onDelete) {
+                Label("Delete Song…", systemImage: "trash")
+            }
         }
     }
 }

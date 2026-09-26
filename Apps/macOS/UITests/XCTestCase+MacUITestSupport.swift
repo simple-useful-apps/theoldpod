@@ -63,9 +63,7 @@ extension XCTestCase {
     @discardableResult
     func launchSettledApp() -> XCUIApplication {
         let app = XCUIApplication()
-        // Playlist state resets inside the app at startup — UI-driven cleanup
-        // (sidebar context menus) was flaky under AX hit-testing.
-        app.launchArguments += ["--uitest-reset-playlists"]
+        app.launchEnvironment["OLDPOD_ACCEPTANCE_ROOT"] = MacUITestFixtures.containerMusicDirectory.path
         app.launch()
         closeMiniPlayerIfPresent(app)
         assertExists(mainWindow(app), "main window should exist after launch")
@@ -159,6 +157,7 @@ extension XCTestCase {
 /// library folder if a previous run (or a fresh container) hasn't seeded it
 /// yet. Mirrors `Packages/OldPodKit/Tests/OldPodKitTests/TestFixtures.swift`.
 enum MacUITestFixtures {
+    private static let runID = UUID().uuidString
     /// The four fixture files the whole suite is written against: "Fixture
     /// One"/"Fixture Two" (The Fixtures, Test Tones), "Fixture Three" (Other
     /// Artist, Covered, has artwork), and "untagged" (Unknown Artist/Album).
@@ -174,13 +173,12 @@ enum MacUITestFixtures {
         return url.appendingPathComponent("Fixtures", isDirectory: true)
     }
 
-    /// The sandboxed Mac app's library folder: `~/Library/Containers/
-    /// com.mattreed.theoldpod.mac/Data/Documents/Music`. Never the real
-    /// (unsandboxed) user Documents/Music, and never iCloud.
+    /// A unique library inside the current app's sandbox, shared only by
+    /// this UI-test process. The real Documents/Music folder is untouched.
     static var containerMusicDirectory: URL {
         URL(fileURLWithPath: NSHomeDirectory())
             .appendingPathComponent(
-                "Library/Containers/com.mattreed.theoldpod.mac/Data/Documents/Music",
+                "Library/Containers/com.mattreed.theoldpod/Data/Documents/Acceptance/\(runID)",
                 isDirectory: true
             )
     }

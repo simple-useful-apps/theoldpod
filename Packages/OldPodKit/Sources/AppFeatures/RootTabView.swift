@@ -10,6 +10,7 @@
 
         @State private var selection: RootTab = .songs
         @State private var isNowPlayingPresented = false
+        @Environment(\.scenePhase) private var scenePhase
 
         public init(coordinator: LibraryCoordinator) {
             self.coordinator = coordinator
@@ -44,6 +45,9 @@
                             .navigationTitle("Playlists")
                     }
                 }
+                Tab("Books", systemImage: "book.closed", value: RootTab.books) {
+                    NavigationStack { BooksView(coordinator: coordinator) }
+                }
             }
             .tabViewBottomAccessory {
                 MiniPlayerBar(player: coordinator.player, artworkDirectory: coordinator.artworkDirectory)
@@ -61,10 +65,13 @@
             .task {
                 coordinator.start()
             }
+            .onChange(of: scenePhase) { _, phase in
+                if phase != .active { coordinator.player.saveProgress() }
+            }
         }
     }
 
     private enum RootTab: Hashable {
-        case artists, albums, songs, playlists
+        case artists, albums, songs, playlists, books
     }
 #endif

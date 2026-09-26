@@ -18,6 +18,15 @@ public struct PlayableTrack: Sendable, Equatable, Identifiable {
     public let artworkID: String?
     public let isDownloaded: Bool
 
+    public var bookID: String? {
+        AudiobookPath.bookID(for: relativePath)
+    }
+
+    public var subtitle: String {
+        if bookID != nil { return artist.isEmpty ? album : "\(artist) · \(album)" }
+        return "\(artist.isEmpty ? "Unknown Artist" : artist) · \(album.isEmpty ? "Unknown Album" : album)"
+    }
+
     public init(
         relativePath: String,
         url: URL,
@@ -47,7 +56,7 @@ public struct PlayableTrack: Sendable, Equatable, Identifiable {
         url = libraryRoot.appendingPathComponent(track.relativePath)
         title = track.title
         artist = track.artist
-        album = track.album
+        album = track.bookID ?? track.album
         duration = track.duration
         artworkID = track.artworkID
         isDownloaded = track.isDownloaded
@@ -62,6 +71,13 @@ public enum RepeatMode: String, Sendable, CaseIterable {
 /// shuffled, and where playback currently sits. Pure value type so its
 /// behavior is exhaustively unit-testable without any `AVFoundation` state.
 public struct PlayQueue: Sendable, Equatable {
+    public enum RemovalOutcome: Sendable, Equatable {
+        case unchanged
+        case currentPreserved
+        case currentReplaced
+        case emptied
+    }
+
     public private(set) var items: [PlayableTrack]
     public private(set) var currentIndex: Int?
     public private(set) var isShuffled: Bool
@@ -227,6 +243,14 @@ public struct PlayQueue: Sendable, Equatable {
         }
     }
 
+    /// Replaces stale index snapshots (notably zero-duration iCloud/book
+    /// placeholders) without changing queue order or the selected occurrence.
+    public mutating func refreshMetadata(from available: [PlayableTrack]) {
+        let byPath = Dictionary(available.map { ($0.relativePath, $0) }, uniquingKeysWith: { first, _ in first })
+        items = items.map { byPath[$0.relativePath] ?? $0 }
+        originalOrder = originalOrder.map { byPath[$0.relativePath] ?? $0 }
+    }
+
     /// Bounds-checked jump to an arbitrary index; leaves state untouched and
     /// returns nil if `index` is out of range.
     /// Not yet wired to any UI — reserved for the future "Up Next" queue
@@ -235,5 +259,49 @@ public struct PlayQueue: Sendable, Equatable {
         guard items.indices.contains(index) else { return nil }
         currentIndex = index
         return items[index]
+    }
+
+    /// Removes every occurrence of an exact path, plus every chapter below
+    /// the requested book folders. If the current item is removed, the queue
+    /// parks on the nearest following survivor (or the preceding tail).
+    @discardableResult
+    public mutating func remove(
+        relativePaths: Set<String>,
+        bookIDs: Set<String> = []
+    ) -> RemovalOutcome {
+        func shouldRemove(_ track: PlayableTrack) -> Bool {
+            if relativePaths.contains(track.relativePath) { return true }
+            return bookIDs.contains { bookID in
+                track.relativePath.hasPrefix("Audiobooks/\(bookID)/")
+            }
+        }
+
+        let indexedSurvivors = items.enumerated().filter { !shouldRemove($0.element) }
+        guard indexedSurvivors.count != items.count else { return .unchanged }
+
+        originalOrder.removeAll(where: shouldRemove)
+        guard !indexedSurvivors.isEmpty else {
+            items = []
+            currentIndex = nil
+            return .emptied
+        }
+
+        let oldCurrentIndex = currentIndex
+        let currentSurvived = oldCurrentIndex.map { index in
+            indexedSurvivors.contains { $0.offset == index }
+        } ?? false
+        let selectedOldIndex: Int = if let oldCurrentIndex, currentSurvived {
+            oldCurrentIndex
+        } else if let oldCurrentIndex,
+                  let following = indexedSurvivors.first(where: { $0.offset > oldCurrentIndex })
+        {
+            following.offset
+        } else {
+            indexedSurvivors.last!.offset
+        }
+
+        items = indexedSurvivors.map(\.element)
+        currentIndex = indexedSurvivors.firstIndex { $0.offset == selectedOldIndex }
+        return currentSurvived ? .currentPreserved : .currentReplaced
     }
 }

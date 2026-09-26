@@ -1,4 +1,6 @@
 import AppFeatures
+import AppKit
+import PlaybackEngine
 import SwiftUI
 
 @main
@@ -7,12 +9,12 @@ struct TheOldPodApp: App {
     @State private var hasFinishedLoading = false
 
     var body: some Scene {
-        Window("theoldpod", id: "main") {
+        Window("The Old Pod", id: "main") {
             if let coordinator {
                 MacRootView(coordinator: coordinator)
                     .modelContainer(coordinator.container)
             } else if hasFinishedLoading {
-                Text("theoldpod couldn't set up its library folder.")
+                Text("The Old Pod couldn't set up its library folder.")
                     .foregroundStyle(.secondary)
                     .padding()
             } else {
@@ -29,6 +31,9 @@ struct TheOldPodApp: App {
                 LibraryCommands(coordinator: coordinator)
                 PlaybackCommands(coordinator: coordinator)
             }
+            // No help book ships with the app; the default item only led to
+            // "Help isn't available for The Old Pod".
+            CommandGroup(replacing: .help) {}
         }
 
         // A standalone Now Playing surface — reachable from the Window menu's
@@ -58,6 +63,7 @@ struct TheOldPodApp: App {
 /// dedicated menu it is.
 private struct LibraryCommands: Commands {
     let coordinator: LibraryCoordinator
+    @FocusedValue(\.getInfoAction) private var getInfoAction
 
     var body: some Commands {
         CommandMenu("Library") {
@@ -65,6 +71,14 @@ private struct LibraryCommands: Commands {
                 _ = PlaylistOps.create(name: "New Playlist", in: coordinator.container.mainContext)
             }
             .keyboardShortcut("n", modifiers: .command)
+
+            Divider()
+
+            Button("Get Info") {
+                getInfoAction?()
+            }
+            .keyboardShortcut("i", modifiers: .command)
+            .disabled(getInfoAction == nil)
         }
     }
 }
@@ -77,6 +91,9 @@ private struct PlaybackCommands: Commands {
 
     var body: some Commands {
         CommandMenu("Playback") {
+            // Space itself is handled by `SpacebarPlayPause`: the focused
+            // Table/List swallows a bare Space before the menu's key
+            // equivalent ever sees it.
             Button("Play/Pause") {
                 coordinator.player.togglePlayPause()
             }
@@ -103,6 +120,29 @@ private struct PlaybackCommands: Commands {
                 coordinator.player.cycleRepeatMode()
             }
             .keyboardShortcut("r", modifiers: [.command, .option])
+        }
+    }
+}
+
+/// Routes a bare Space to play/pause from anywhere in the main window except
+/// text entry. Installed as a local key-down monitor because Tables and Lists
+/// consume Space (type-select) before menu key equivalents are consulted, so
+/// the Playback menu's shortcut alone never fired.
+@MainActor
+enum SpacebarPlayPause {
+    private static var monitor: Any?
+
+    static func install(player: PlayerController) {
+        guard monitor == nil else { return }
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            guard event.keyCode == 49,
+                  event.modifierFlags.isDisjoint(with: .deviceIndependentFlagsMask),
+                  let window = event.window,
+                  window.attachedSheet == nil,
+                  !(window.firstResponder is NSText)
+            else { return event }
+            player.togglePlayPause()
+            return nil
         }
     }
 }

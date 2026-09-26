@@ -50,8 +50,8 @@ targets:
         CFBundleIconName: AppIcon
         # Bumped when NSUbiquitousContainers changed effect (the OS caches
         # that dictionary per bundle version) — see docs/ICLOUD.md step 4.
-        # Also bumped to 3 for the first TestFlight upload (2 already used).
-        CFBundleVersion: "3"
+        # Build 5 adds audiobook grouping, listening history, speed and skips.
+        CFBundleVersion: "8"
         CFBundleShortVersionString: "1.0"
         UILaunchScreen: {}
         UIBackgroundModes: [audio]
@@ -103,6 +103,10 @@ targets:
     sources:
       - Apps/macOS/Sources
       - Apps/macOS/Resources
+    postBuildScripts:
+      - name: Build, Embed, and Sign WMA Converter
+        script: scripts/embed-wma-helper.sh
+        basedOnDependencyAnalysis: false
     dependencies:
       - package: OldPodKit
         product: OldPodKit
@@ -125,13 +129,24 @@ targets:
         ENABLE_HARDENED_RUNTIME: true
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        ENABLE_USER_SCRIPT_SANDBOXING: false
     info:
       path: Apps/macOS/Info.plist
       properties:
         CFBundleDisplayName: The Old Pod
+        # The app menu title and system alerts read CFBundleName, which
+        # otherwise defaults to PRODUCT_NAME ("TheOldPod").
+        CFBundleName: The Old Pod
         CFBundleVersion: "2"
         CFBundleShortVersionString: "1.0"
         LSApplicationCategoryType: public.app-category.music
+        UTImportedTypeDeclarations:
+          - UTTypeIdentifier: com.microsoft.windows-media-wma
+            UTTypeDescription: Windows Media Audio
+            UTTypeConformsTo: [public.audio]
+            UTTypeTagSpecification:
+              public.filename-extension: [wma]
+              public.mime-type: [audio/x-ms-wma]
         NSUbiquitousContainers:
           iCloud.com.mattreed.theoldpod:
             NSUbiquitousContainerIsDocumentScopePublic: true

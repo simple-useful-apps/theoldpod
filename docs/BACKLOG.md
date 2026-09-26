@@ -1,6 +1,6 @@
 # Backlog
 
-Known items deliberately deferred from v1, mostly surfaced by the M6 full-codebase review. None block daily use.
+Known items deliberately deferred from v1, mostly surfaced by the M6 full-codebase review. Some can affect playback or playlist persistence; see [the September 2026 review](ACCEPTANCE-2026-09-06.md) for current status.
 
 ## Performance (matters at multi-thousand-track libraries)
 
@@ -12,7 +12,7 @@ Known items deliberately deferred from v1, mostly surfaced by the M6 full-codeba
 
 - **Repeat-mode toggle race** — toggling repeat at the exact moment a repeat-one track ends can audibly cut to the next track (the mismatch branch full-rebuilds mid-play). Rare, self-healing; fix by capturing repeatMode at end-event time.
 - **Download badge coverage** — undownloaded-track glyph shows in the Songs list and Mac table but not in album/playlist/artist rows. Extract a shared track-row trailing view.
-- ~~Playlists don't sync between devices~~ — retired in v1.1: playlists now live as `.m3u8` files under `<libraryRoot>/Playlists` (`PlaylistFileSync`), so they ride along with whatever syncs the library folder. Known edges, all accepted: external file rename reads as delete+create (new `createdAt`); non-atomic in-place edits may not be noticed until next launch; same-name playlists merge on reconcile.
+- ~~Playlists don't sync between devices~~ — retired in v1.1: playlists now live as `.m3u8` files under `<libraryRoot>/Playlists` (`PlaylistFileSync`), so they ride along with whatever syncs the library folder. Known edges, all accepted: external file rename reads as delete+create (new `createdAt`); non-atomic in-place edits may not be noticed until next launch; new playlist names now receive collision-free suffixes (September 2026 review).
 
 ## Verification gaps
 
@@ -25,7 +25,7 @@ Known items deliberately deferred from v1, mostly surfaced by the M6 full-codeba
 
 ## Product decisions pending
 
-- **Batch "Play Next" on an empty queue starts on the batch's LAST track** (the first insert into an empty queue acts like replace-at-0, then the rest stack in front). Pre-existing behavior, preserved and pinned by a unit test during the simplify pass — decide whether first-track-first is the better semantic.
+- Batch "Play Next" now preserves selection order in an empty queue. Computer-use verification is pending; see the September 2026 review.
 - **iOS/Mac PlaylistDetailView remain two implementations** of one concept (~230 lines each). Shared components (PlayShuffleButtons, LibraryText, TrackContextMenuContent) now cover the drift-prone parts; full unification deferred as a larger refactor.
 
 ## Cleanup

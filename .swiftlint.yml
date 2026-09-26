@@ -1,0 +1,23 @@
+# SwiftLint config. Run: `make lint`.
+# Rules that fight SwiftFormat's output (trailing commas, brace on its own
+# line after a wrapped condition) are disabled so the two tools agree.
+included:
+  - Apps
+  - Packages/OldPodKit/Sources
+  - Packages/OldPodKit/Tests
+excluded:
+  - Packages/OldPodKit/.build
+  - ThirdParty
+
+disabled_rules:
+  - trailing_comma
+  - opening_brace
+
+identifier_name:
+  excluded: [a, b, c, s, on, id, x, y]
+
+line_length:
+  warning: 140
+  error: 200
+  ignores_comments: true
+  ignores_urls: true

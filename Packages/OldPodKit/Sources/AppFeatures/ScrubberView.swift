@@ -17,23 +17,20 @@ public struct ScrubberView: View {
     private let player: PlayerController
     private let style: Style
 
-    @State private var isDragging = false
-    @State private var dragValue: TimeInterval = 0
-
     public init(player: PlayerController, style: Style = .stacked) {
         self.player = player
         self.style = style
     }
 
     private var duration: TimeInterval {
-        player.current?.duration ?? 0
+        player.currentDuration
     }
 
-    /// While dragging, the slider (and labels) show the in-progress drag
-    /// position rather than fighting the periodic time observer; once the
-    /// drag ends, `player.seek(to:)` catches the playhead up.
+    /// Keep one source of truth for touch, keyboard and accessibility seeking.
+    /// A separate editing flag can outlive a cancelled gesture or track change,
+    /// leaving the time readouts frozen even while playback advances.
     private var displayedTime: TimeInterval {
-        isDragging ? dragValue : min(player.currentTime, duration)
+        min(player.currentTime, duration)
     }
 
     public var body: some View {
@@ -62,18 +59,12 @@ public struct ScrubberView: View {
 
     private var slider: some View {
         Slider(
-            value: Binding(get: { displayedTime }, set: { dragValue = $0 }),
-            in: 0 ... max(duration, 1),
-            onEditingChanged: { editing in
-                isDragging = editing
-                if editing {
-                    dragValue = player.currentTime
-                } else {
-                    player.seek(to: dragValue)
-                }
-            }
+            value: Binding(get: { displayedTime }, set: { player.seek(to: $0) }),
+            in: 0 ... max(duration, 1)
         )
-        .disabled(player.current == nil || duration <= 0)
+        .accessibilityLabel("Playback position")
+        .accessibilityValue(DurationText.format(displayedTime))
+        .disabled(!player.canSeek)
     }
 
     private var elapsedText: some View {

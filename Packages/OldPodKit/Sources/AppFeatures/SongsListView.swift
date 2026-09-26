@@ -11,7 +11,7 @@ import UniformTypeIdentifiers
 /// plays the whole visible list starting at that row; long-press offers
 /// Play Next / Add to Queue / Add to Playlist; the toolbar button imports
 /// supported audio files into the library folder.
-public struct SongsListView: View {
+struct SongsListView: View {
     @Query(sort: \Track.title) private var tracks: [Track]
     @State private var searchText = ""
 
@@ -20,24 +20,26 @@ public struct SongsListView: View {
     @State private var importSkippedCount: Int?
 
     @State private var trackPendingPlaylistAdd: Track?
+    @State private var deletionRequest: LibraryDeletionRequest?
 
     private let coordinator: LibraryCoordinator
 
-    public init(coordinator: LibraryCoordinator) {
+    init(coordinator: LibraryCoordinator) {
         self.coordinator = coordinator
     }
 
     /// `tracks` narrowed to those matching `searchText` in title, artist, or
     /// album — case and diacritic insensitive. Empty query means "no filter."
     private var filteredTracks: [Track] {
-        guard !searchText.isEmpty else { return tracks }
+        let music = tracks.filter { !$0.isAudiobook }
+        guard !searchText.isEmpty else { return music }
         let needle = Self.fold(searchText) // fold once, not per track
-        return tracks.filter { Self.matches($0, needle: needle) }
+        return music.filter { Self.matches($0, needle: needle) }
     }
 
-    public var body: some View {
+    var body: some View {
         Group {
-            if tracks.isEmpty {
+            if !tracks.contains(where: { !$0.isAudiobook }) {
                 ContentUnavailableView(
                     "No Music Yet",
                     systemImage: "music.note",
@@ -58,17 +60,32 @@ public struct SongsListView: View {
                             coordinator.play(filteredTracks, startingAt: index)
                         }
                         .contextMenu {
-                            TrackContextMenuContent(track: track, coordinator: coordinator) {
-                                trackPendingPlaylistAdd = track
-                            }
+                            TrackContextMenuContent(
+                                track: track,
+                                coordinator: coordinator,
+                                onDelete: { deletionRequest = .songs([SongDeletionTarget(track: track)]) },
+                                onAddToPlaylist: { trackPendingPlaylistAdd = track }
+                            )
                         }
+                        #if os(iOS)
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button {
+                                deletionRequest = .songs([SongDeletionTarget(track: track)])
+                            } label: {
+                                Label("Delete Song", systemImage: "trash")
+                            }
+                            .tint(.red)
+                        }
+                        #endif
                     }
                 }
                 .listStyle(.plain)
             }
         }
         .searchable(text: $searchText, prompt: "Search Songs")
+        .refreshable { await coordinator.refreshLibrary() }
         .toolbar {
+            ToolbarItem(placement: .automatic) { LibraryStatusButton(coordinator: coordinator) }
             ToolbarItem(placement: .primaryAction) {
                 if isImporting {
                     ProgressView()
@@ -76,9 +93,9 @@ public struct SongsListView: View {
                     Button {
                         isPresentingFileImporter = true
                     } label: {
-                        Image(systemName: "square.and.arrow.down")
+                        Image(systemName: "plus")
                     }
-                    .accessibilityLabel("Import Music")
+                    .accessibilityLabel("Add Music")
                 }
             }
         }
@@ -111,6 +128,7 @@ public struct SongsListView: View {
             }
         }
         .addToPlaylistSheet(for: $trackPendingPlaylistAdd)
+        .libraryDeletionConfirmation(request: $deletionRequest, coordinator: coordinator)
     }
 
     private static func matches(_ track: Track, needle: String) -> Bool {

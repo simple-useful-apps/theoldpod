@@ -40,10 +40,12 @@ public final class PlaylistFileSync {
     public func migrateAndReconcile() {
         if !defaults.bool(forKey: Self.exportedV1DefaultsKey) {
             let context = container.mainContext
-            let existingFileNames = Set(store.readAll().keys)
+            guard (try? store.ensureDirectoryExists()) != nil,
+                  let files = try? store.readAll() else { return }
+            let existingFileNames = Set(files.keys)
             let playlists = (try? context.fetch(FetchDescriptor<Playlist>())) ?? []
             for playlist in playlists where !existingFileNames.contains(playlist.name) {
-                store.write(name: playlist.name, entries: serialize(playlist, in: context))
+                guard store.write(name: playlist.name, entries: serialize(playlist, in: context)) else { return }
             }
             defaults.set(true, forKey: Self.exportedV1DefaultsKey)
         }
@@ -84,18 +86,17 @@ public final class PlaylistFileSync {
     /// plain file rename can express.
     public func reconcile() {
         let context = container.mainContext
-        let files = store.readAll()
+        // An unavailable iCloud file or directory is not an empty library.
+        // Keep the last good index until a complete read succeeds.
+        guard let files = try? store.readAll() else { return }
         let playlists = (try? context.fetch(FetchDescriptor<Playlist>())) ?? []
 
         for playlist in playlists where files[playlist.name] == nil {
             context.delete(playlist)
         }
 
-        // Nothing stops the app from holding two playlists with the same name
-        // (both platforms' "New Playlist" actions create the same default name
-        // every time) — but one name maps to one file, and one file can only
-        // describe one playlist. Keep the first, delete the extras: they merge,
-        // which is what "files are the truth" demands.
+        // Older versions allowed duplicate names. Reconcile that legacy
+        // index to one row per file; new mutations use collision-free names.
         var survivingByName: [String: Playlist] = [:]
         for playlist in playlists where files[playlist.name] != nil {
             if survivingByName[playlist.name] == nil {
@@ -139,8 +140,14 @@ public final class PlaylistFileSync {
     }
 
     func playlistRenamed(from oldName: String, to playlist: Playlist, in context: ModelContext) {
-        store.delete(name: oldName)
-        store.write(name: playlist.name, entries: serialize(playlist, in: context))
+        guard store.write(name: playlist.name, entries: serialize(playlist, in: context)) else {
+            playlist.name = oldName
+            save(context)
+            return
+        }
+        if oldName.caseInsensitiveCompare(playlist.name) != .orderedSame {
+            store.delete(name: oldName)
+        }
     }
 
     // MARK: - Helpers
@@ -154,7 +161,10 @@ public final class PlaylistFileSync {
             let path = entry.trackPath
             let descriptor = FetchDescriptor<Track>(predicate: #Predicate { $0.relativePath == path })
             if let track = try? context.fetch(descriptor).first {
-                return PlaylistFileEntry(trackPath: path, title: track.title, seconds: Int(track.duration.rounded()))
+                let duration = track.duration
+                let seconds = duration.isFinite && duration >= 0 && duration < Double(Int.max)
+                    ? Int(duration.rounded()) : -1
+                return PlaylistFileEntry(trackPath: path, title: track.title, seconds: seconds)
             }
             return PlaylistFileEntry(trackPath: path, title: stem(of: path), seconds: -1)
         }

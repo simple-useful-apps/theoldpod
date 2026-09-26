@@ -1,4 +1,5 @@
 import AppFeatures
+import AppKit
 import CloudFiles
 import DesignSystem
 import Domain
@@ -19,6 +20,7 @@ struct MacRootView: View {
     @Query(sort: \Playlist.createdAt) private var playlists: [Playlist]
 
     @State private var selection: SidebarItem? = .songs
+    @State private var playlistSearch = ""
 
     @State private var playlistPendingRename: Playlist?
     @State private var renameText = ""
@@ -26,7 +28,8 @@ struct MacRootView: View {
 
     @State private var isImporterPresented = false
     @State private var isImporting = false
-    @State private var importSkippedCount: Int?
+    @State private var importProgress: ImportProgress?
+    @State private var importReport: String?
 
     init(coordinator: LibraryCoordinator) {
         self.coordinator = coordinator
@@ -50,26 +53,36 @@ struct MacRootView: View {
         // Window minimum: toolbar + full-height player bar + a useful table.
         // Below this, the fixed-height bar + split-view minimums exceed the
         // window and the VStack spills up under the toolbar (clipped LCD).
-        .frame(minWidth: 720, minHeight: 520)
+        .frame(minWidth: 760, minHeight: 520)
         .toolbar {
+            ToolbarItem(placement: .automatic) { LibraryStatusButton(coordinator: coordinator) }
             ToolbarItem(placement: .automatic) {
                 if isImporting {
-                    ProgressView()
-                        .controlSize(.small)
+                    HStack(spacing: 6) {
+                        ProgressView()
+                            .controlSize(.small)
+                        if let progress = importProgress {
+                            Text("\(progress.description) (\(progress.completed) of \(progress.total))")
+                                .lineLimit(1)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
             }
             ToolbarItem(placement: .automatic) {
-                Button {
-                    isImporterPresented = true
-                } label: {
-                    Label("Import", systemImage: "square.and.arrow.down")
+                if selection != .books {
+                    Button {
+                        isImporterPresented = true
+                    } label: {
+                        Label("Add Music", systemImage: "plus")
+                    }
+                    .help("Import music files into the library")
                 }
-                .help("Import music files into the library")
             }
         }
         .fileImporter(
             isPresented: $isImporterPresented,
-            allowedContentTypes: [.mp3, .mpeg4Audio],
+            allowedContentTypes: ImportService.supportedContentTypes,
             allowsMultipleSelection: true
         ) { result in
             if case let .success(urls) = result {
@@ -80,25 +93,25 @@ struct MacRootView: View {
             startImport(of: urls)
         }
         .alert(
-            "Some Files Couldn\u{2019}t Be Imported",
+            "Import Finished with Issues",
             isPresented: Binding(
-                get: { importSkippedCount != nil },
-                set: { if !$0 { importSkippedCount = nil } }
+                get: { importReport != nil },
+                set: { if !$0 { importReport = nil } }
             )
         ) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text("\(importSkippedCount ?? 0) file\((importSkippedCount ?? 0) == 1 ? "" : "s") couldn\u{2019}t be imported.")
+            Text(importReport ?? "")
         }
         .task {
-            // UI-test hook: deleting playlists through the real UI proved
-            // flaky (AX hittability), so the suite resets state at launch.
-            if ProcessInfo.processInfo.arguments.contains("--uitest-reset-playlists") {
-                for playlist in playlists {
-                    PlaylistOps.delete(playlist, in: modelContext)
-                }
-            }
             coordinator.start()
+            SpacebarPlayPause.install(player: coordinator.player)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.willResignActiveNotification)) { _ in
+            coordinator.player.saveProgress()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
+            coordinator.player.saveProgress()
         }
     }
 
@@ -108,9 +121,13 @@ struct MacRootView: View {
                 Label("Songs", systemImage: "music.note").tag(SidebarItem.songs)
                 Label("Artists", systemImage: "music.mic").tag(SidebarItem.artists)
                 Label("Albums", systemImage: "square.stack").tag(SidebarItem.albums)
+                Label("Books", systemImage: "book.closed").tag(SidebarItem.books)
             }
             Section {
-                ForEach(playlists) { playlist in
+                TextField("Search Playlists", text: $playlistSearch)
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityLabel("Search Playlists")
+                ForEach(playlists.filter { playlistSearch.isEmpty || $0.name.localizedStandardContains(playlistSearch) }) { playlist in
                     Label(playlist.name, systemImage: "music.note.list")
                         .tag(SidebarItem.playlist(playlist.persistentModelID))
                         .contextMenu {
@@ -118,6 +135,9 @@ struct MacRootView: View {
                             Divider()
                             Button("Delete", role: .destructive) { playlistPendingDelete = playlist }
                         }
+                }
+                if !playlistSearch.isEmpty, !playlists.contains(where: { $0.name.localizedStandardContains(playlistSearch) }) {
+                    Text("No matching playlists").foregroundStyle(.secondary)
                 }
             } header: {
                 HStack {
@@ -184,6 +204,8 @@ struct MacRootView: View {
         case .albums:
             AlbumsDetailView(coordinator: coordinator)
                 .navigationTitle("Albums")
+        case .books:
+            NavigationStack { BooksView(coordinator: coordinator) }
         case let .playlist(id):
             if let playlist = playlists.first(where: { $0.persistentModelID == id }) {
                 PlaylistDetailView(playlist: playlist, coordinator: coordinator)
@@ -222,20 +244,24 @@ struct MacRootView: View {
     // MARK: - Import
 
     private func startImport(of urls: [URL]) {
-        guard !urls.isEmpty else { return }
+        guard !urls.isEmpty, !isImporting else { return }
         isImporting = true
         Task {
-            let result = await ImportService(libraryRoot: coordinator.libraryRoot).importFiles(at: urls)
-            isImporting = false
-            if !result.skipped.isEmpty {
-                importSkippedCount = result.skipped.count
+            let result = await ImportService(libraryRoot: coordinator.libraryRoot).importFiles(at: urls) { progress in
+                importProgress = progress
             }
+            if !result.imported.isEmpty {
+                _ = await coordinator.refreshLibrary()
+            }
+            isImporting = false
+            importProgress = nil
+            importReport = result.report
         }
     }
 }
 
 private enum SidebarItem: Hashable {
-    case songs, artists, albums
+    case songs, artists, albums, books
     case playlist(PersistentIdentifier)
 }
 
@@ -246,6 +272,7 @@ private struct ArtistsDetailView: View {
 
     @Query private var tracks: [Track]
     @State private var selectedArtistID: String?
+    @State private var searchText = ""
 
     var body: some View {
         // Grouped once per body evaluation — reading a computed property from
@@ -253,7 +280,9 @@ private struct ArtistsDetailView: View {
         // library three times per render.
         let artists = LibraryGroups.artists(from: tracks)
         HSplitView {
-            Group {
+            VStack {
+                TextField("Search Artists", text: $searchText).textFieldStyle(.roundedBorder).padding([.horizontal, .top], 8)
+                    .onChange(of: searchText) { _, _ in selectedArtistID = nil }
                 if artists.isEmpty {
                     ContentUnavailableView(
                         "No Artists Yet",
@@ -261,29 +290,46 @@ private struct ArtistsDetailView: View {
                         description: Text("Drop music files into\n\(coordinator.libraryRoot.path)")
                     )
                 } else {
-                    List(selection: $selectedArtistID) {
-                        ForEach(artists) { artist in
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(artist.name)
-                                Text(LibraryText.songCount(artist.trackCount))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                    VStack {
+                        List(selection: $selectedArtistID) {
+                            ForEach(artists.filter { searchText.isEmpty || $0.name.localizedStandardContains(searchText) }) { artist in
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(artist.name)
+                                    Text(LibraryText.songCount(artist.trackCount))
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .tag(artist.id)
                             }
-                            .tag(artist.id)
+                        }
+                        // UI tests: an artist name (e.g. "The Fixtures") also
+                        // appears verbatim in the Artist column of the
+                        // SongsTableView right beside this list, so a bare label
+                        // lookup for the row is ambiguous — this identifier lets
+                        // tests scope the query to just this list.
+                        .accessibilityIdentifier("artistsList")
+                        .overlay {
+                            if !searchText.isEmpty, !artists.contains(where: { $0.name.localizedStandardContains(searchText) }) {
+                                Text("No matching artists").foregroundStyle(.secondary)
+                            }
                         }
                     }
-                    // UI tests: an artist name (e.g. "The Fixtures") also
-                    // appears verbatim in the Artist column of the
-                    // SongsTableView right beside this list, so a bare label
-                    // lookup for the row is ambiguous — this identifier lets
-                    // tests scope the query to just this list.
-                    .accessibilityIdentifier("artistsList")
                 }
             }
-            .frame(minWidth: 200, idealWidth: 220, maxWidth: 320)
+            .frame(minWidth: 200, idealWidth: 220, maxWidth: 300)
 
-            SongsTableView(coordinator: coordinator, filter: filter(artists: artists))
-                .frame(minWidth: 400)
+            // An artist's songs read in album order, like their discography,
+            // rather than A–Z by title.
+            SongsTableView(
+                coordinator: coordinator,
+                filter: filter(artists: artists),
+                initialSortOrder: [
+                    KeyPathComparator(\.album, order: .forward),
+                    KeyPathComparator(\.discNumber, order: .forward),
+                    KeyPathComparator(\.trackNumber, order: .forward),
+                ]
+            )
+            .frame(minWidth: 320)
         }
     }
 
@@ -291,6 +337,10 @@ private struct ArtistsDetailView: View {
     /// the selected artist's albums.
     private func filter(artists: [ArtistGroup]) -> (Track) -> Bool {
         guard let selectedArtistID, let group = artists.first(where: { $0.id == selectedArtistID }) else {
+            if !searchText.isEmpty {
+                let ids = Set(artists.filter { $0.name.localizedStandardContains(searchText) }.flatMap(\.albums).flatMap(\.trackIDs))
+                return { ids.contains($0.persistentModelID) }
+            }
             return { _ in true }
         }
         let ids = Set(group.albums.flatMap(\.trackIDs))
@@ -305,12 +355,15 @@ private struct AlbumsDetailView: View {
 
     @Query private var tracks: [Track]
     @State private var selectedAlbumID: String?
+    @State private var searchText = ""
 
     var body: some View {
         // Grouped once per body evaluation (see ArtistsDetailView).
         let albums = LibraryGroups.albums(from: tracks)
         HSplitView {
-            Group {
+            VStack {
+                TextField("Search Albums", text: $searchText).textFieldStyle(.roundedBorder).padding([.horizontal, .top], 8)
+                    .onChange(of: searchText) { _, _ in selectedAlbumID = nil }
                 if albums.isEmpty {
                     ContentUnavailableView(
                         "No Albums Yet",
@@ -318,31 +371,41 @@ private struct AlbumsDetailView: View {
                         description: Text("Drop music files into\n\(coordinator.libraryRoot.path)")
                     )
                 } else {
-                    List(selection: $selectedAlbumID) {
-                        ForEach(albums) { album in
-                            HStack(spacing: 8) {
-                                ArtworkImage(artworkID: album.artworkID, directory: coordinator.artworkDirectory, pointSize: 56)
-                                    .frame(width: 56, height: 56)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(album.title)
-                                        .lineLimit(1)
-                                    Text(album.artistName)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
+                    VStack {
+                        List(selection: $selectedAlbumID) {
+                            ForEach(albums.filter { searchText.isEmpty || $0.title.localizedStandardContains(searchText) || $0.artistName.localizedStandardContains(searchText) }) { album in
+                                HStack(spacing: 8) {
+                                    ArtworkImage(artworkID: album.artworkID, directory: coordinator.artworkDirectory, pointSize: 56)
+                                        .frame(width: 56, height: 56)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(album.title)
+                                            .lineLimit(1)
+                                        Text(album.artistName)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(1)
+                                    }
                                 }
+                                .tag(album.id)
                             }
-                            .tag(album.id)
+                        }
+                        // UI tests: an album title (e.g. "Covered") also appears
+                        // verbatim in the Album column of the SongsTableView
+                        // right beside this list — see the matching comment on
+                        // `artistsList` above.
+                        .accessibilityIdentifier("albumsList")
+                        .overlay {
+                            if !searchText.isEmpty, !albums.contains(where: { $0.title.localizedStandardContains(searchText) || $0.artistName.localizedStandardContains(searchText) }) {
+                                Text("No matching albums").foregroundStyle(.secondary)
+                            }
                         }
                     }
-                    // UI tests: an album title (e.g. "Covered") also appears
-                    // verbatim in the Album column of the SongsTableView
-                    // right beside this list — see the matching comment on
-                    // `artistsList` above.
-                    .accessibilityIdentifier("albumsList")
                 }
             }
-            .frame(minWidth: 240, idealWidth: 260, maxWidth: 340)
+            // Sidebar + this pane + the table's minimum must fit the default
+            // 1000pt window; at 240…340 + 400 the split view overflowed and
+            // clipped the sidebar's leading edge and the Time column.
+            .frame(minWidth: 220, idealWidth: 240, maxWidth: 300)
 
             SongsTableView(
                 coordinator: coordinator,
@@ -352,13 +415,17 @@ private struct AlbumsDetailView: View {
                     KeyPathComparator(\.trackNumber, order: .forward),
                 ]
             )
-            .frame(minWidth: 400)
+            .frame(minWidth: 320)
         }
     }
 
     /// nil selection = all tracks; otherwise just the selected album's tracks.
     private func filter(albums: [AlbumGroup]) -> (Track) -> Bool {
         guard let selectedAlbumID, let group = albums.first(where: { $0.id == selectedAlbumID }) else {
+            if !searchText.isEmpty {
+                let ids = Set(albums.filter { $0.title.localizedStandardContains(searchText) || $0.artistName.localizedStandardContains(searchText) }.flatMap(\.trackIDs))
+                return { ids.contains($0.persistentModelID) }
+            }
             return { _ in true }
         }
         let ids = Set(group.trackIDs)

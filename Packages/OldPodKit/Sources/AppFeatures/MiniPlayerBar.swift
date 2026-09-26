@@ -22,8 +22,13 @@ public struct MiniPlayerBar: View {
                 .frame(height: 0.5)
 
             HStack(spacing: 12) {
-                ArtworkImage(artworkID: player.current?.artworkID, directory: artworkDirectory, pointSize: 40)
-                    .frame(width: 40, height: 40)
+                ArtworkImage(
+                    artworkID: player.current?.artworkID,
+                    directory: artworkDirectory,
+                    pointSize: 40,
+                    placeholderSystemName: player.current?.bookID != nil ? "book.closed" : "music.note"
+                )
+                .frame(width: 40, height: 40)
 
                 if let current = player.current {
                     VStack(alignment: .leading, spacing: 2) {
@@ -32,7 +37,7 @@ public struct MiniPlayerBar: View {
                             .lineLimit(1)
                             .truncationMode(.tail)
                             .accessibilityIdentifier("miniPlayerTitle")
-                        Text(current.artist.isEmpty ? "Unknown Artist" : current.artist)
+                        Text(current.bookID != nil ? current.album : (current.artist.isEmpty ? "Unknown Artist" : current.artist))
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
@@ -57,25 +62,29 @@ public struct MiniPlayerBar: View {
     private var transportControls: some View {
         HStack(spacing: 20) {
             Button {
-                player.previous()
+                if player.current?.bookID != nil { player.skip(by: -15) } else { player.previous() }
             } label: {
-                Image(systemName: "backward.fill")
+                Image(systemName: player.current?.bookID != nil ? "gobackward.15" : "backward.fill")
             }
             .accessibilityIdentifier("miniPlayerPreviousButton")
+            .accessibilityLabel(player.current?.bookID != nil ? "Back 15 seconds" : "Previous Track")
 
             Button {
                 player.togglePlayPause()
             } label: {
-                Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                PlayPauseSymbol(isPlaying: player.isPlaying)
+                    .frame(width: 24)
             }
             .accessibilityIdentifier("miniPlayerPlayPauseButton")
+            .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
 
             Button {
-                player.next()
+                if player.current?.bookID != nil { player.skip(by: 15) } else { player.next() }
             } label: {
-                Image(systemName: "forward.fill")
+                Image(systemName: player.current?.bookID != nil ? "goforward.15" : "forward.fill")
             }
             .accessibilityIdentifier("miniPlayerNextButton")
+            .accessibilityLabel(player.current?.bookID != nil ? "Forward 15 seconds" : "Next Track")
         }
         .buttonStyle(.borderless)
         .imageScale(.large)

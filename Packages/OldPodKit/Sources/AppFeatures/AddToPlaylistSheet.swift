@@ -6,7 +6,7 @@ import SwiftUI
 /// single `track` to one of them. Shared by song rows across the app
 /// (`SongsListView`, `AlbumDetailView`) via their "Add to Playlist…" context
 /// menu item.
-public struct AddToPlaylistSheet: View {
+struct AddToPlaylistSheet: View {
     let track: Track
 
     @Query(sort: \Playlist.createdAt) private var playlists: [Playlist]
@@ -16,11 +16,11 @@ public struct AddToPlaylistSheet: View {
     @State private var isPresentingNewPlaylistAlert = false
     @State private var newPlaylistName = ""
 
-    public init(track: Track) {
+    init(track: Track) {
         self.track = track
     }
 
-    public var body: some View {
+    var body: some View {
         NavigationStack {
             List {
                 Button {

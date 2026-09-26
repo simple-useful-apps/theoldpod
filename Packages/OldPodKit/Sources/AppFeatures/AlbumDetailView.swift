@@ -7,15 +7,16 @@ import SwiftUI
 /// A single album's detail screen: hero artwork, title/artist/metadata line,
 /// Play/Shuffle actions, and the track list (disc/track-ordered, matching
 /// `LibraryGroups.albums(from:)`'s sort).
-public struct AlbumDetailView: View {
+struct AlbumDetailView: View {
     let album: AlbumGroup
     let coordinator: LibraryCoordinator
 
     @Environment(\.modelContext) private var modelContext
 
     @State private var trackPendingPlaylistAdd: Track?
+    @State private var deletionRequest: LibraryDeletionRequest?
 
-    public init(album: AlbumGroup, coordinator: LibraryCoordinator) {
+    init(album: AlbumGroup, coordinator: LibraryCoordinator) {
         self.album = album
         self.coordinator = coordinator
     }
@@ -24,7 +25,7 @@ public struct AlbumDetailView: View {
         LibraryGroups.tracks(for: album.trackIDs, in: modelContext)
     }
 
-    public var body: some View {
+    var body: some View {
         let tracks = tracks
         List {
             Section {
@@ -45,10 +46,23 @@ public struct AlbumDetailView: View {
                         coordinator.play(tracks, startingAt: index)
                     }
                     .contextMenu {
-                        TrackContextMenuContent(track: track, coordinator: coordinator) {
-                            trackPendingPlaylistAdd = track
-                        }
+                        TrackContextMenuContent(
+                            track: track,
+                            coordinator: coordinator,
+                            onDelete: { deletionRequest = .songs([SongDeletionTarget(track: track)]) },
+                            onAddToPlaylist: { trackPendingPlaylistAdd = track }
+                        )
                     }
+                    #if os(iOS)
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        Button {
+                            deletionRequest = .songs([SongDeletionTarget(track: track)])
+                        } label: {
+                            Label("Delete Song", systemImage: "trash")
+                        }
+                        .tint(.red)
+                    }
+                    #endif
                 }
             }
         }
@@ -58,6 +72,7 @@ public struct AlbumDetailView: View {
             .navigationBarTitleDisplayMode(.inline)
         #endif
             .addToPlaylistSheet(for: $trackPendingPlaylistAdd)
+            .libraryDeletionConfirmation(request: $deletionRequest, coordinator: coordinator)
     }
 
     private func header(tracks: [Track]) -> some View {

@@ -34,19 +34,27 @@ public enum MetadataReader {
         }
 
         var trackNumber: Int?
+        var trackTotal: Int?
         var discNumber: Int?
+        var discTotal: Int?
         var year: Int?
 
         if let id3Items = try? await asset.loadMetadata(for: .id3Metadata) {
             for item in id3Items {
                 switch item.identifier {
+                case .id3MetadataBand:
+                    albumArtist = try? await item.load(.stringValue)
                 case .id3MetadataTrackNumber:
                     if let raw = try? await item.load(.stringValue) {
-                        trackNumber = leadingInt(in: raw)
+                        let pair = indexPair(in: raw)
+                        trackNumber = pair.index
+                        trackTotal = pair.total
                     }
                 case .id3MetadataPartOfASet:
                     if let raw = try? await item.load(.stringValue) {
-                        discNumber = leadingInt(in: raw)
+                        let pair = indexPair(in: raw)
+                        discNumber = pair.index
+                        discTotal = pair.total
                     }
                 case .id3MetadataRecordingTime, .id3MetadataYear:
                     if year == nil, let raw = try? await item.load(.stringValue) {
@@ -78,9 +86,17 @@ public enum MetadataReader {
                 case .iTunesMetadataUserGenre:
                     if genre == nil { genre = try? await item.load(.stringValue) }
                 case .iTunesMetadataTrackNumber:
-                    if trackNumber == nil { trackNumber = await iTunesIndex(from: item) }
+                    if trackNumber == nil {
+                        let pair = await iTunesIndex(from: item)
+                        trackNumber = pair.index
+                        trackTotal = pair.total
+                    }
                 case .iTunesMetadataDiscNumber:
-                    if discNumber == nil { discNumber = await iTunesIndex(from: item) }
+                    if discNumber == nil {
+                        let pair = await iTunesIndex(from: item)
+                        discNumber = pair.index
+                        discTotal = pair.total
+                    }
                 case .iTunesMetadataReleaseDate:
                     if year == nil, let raw = try? await item.load(.stringValue) {
                         year = leadingYear(in: raw)
@@ -92,23 +108,43 @@ public enum MetadataReader {
         }
 
         return TrackMetadata(
-            title: title,
-            artist: artist,
-            album: album,
-            albumArtist: albumArtist,
+            title: nonempty(title),
+            artist: nonempty(artist),
+            album: nonempty(album),
+            albumArtist: nonempty(albumArtist),
             trackNumber: trackNumber,
+            trackTotal: trackTotal,
             discNumber: discNumber,
+            discTotal: discTotal,
             year: year,
             genre: genre,
-            duration: duration.seconds,
+            duration: duration.seconds.isFinite ? max(duration.seconds, 0) : 0,
             artwork: artwork
         )
+    }
+
+    private static func nonempty(_ value: String?) -> String? {
+        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else { return nil }
+        return trimmed
     }
 
     /// Parses a leading integer out of strings like "3/12" (track/disc number).
     private static func leadingInt(in string: String) -> Int? {
         let digits = string.prefix { $0.isNumber }
         return Int(digits)
+    }
+
+    private struct IndexPair {
+        let index: Int?
+        let total: Int?
+    }
+
+    /// Parses the item and optional total from ID3 values such as "3/12".
+    private static func indexPair(in string: String) -> IndexPair {
+        let components = string.split(separator: "/", maxSplits: 1, omittingEmptySubsequences: false)
+        let index = components.first.flatMap { leadingInt(in: String($0)) }
+        let total = components.count > 1 ? leadingInt(in: String(components[1])) : nil
+        return IndexPair(index: index, total: total.flatMap { $0 > 0 ? $0 : nil })
     }
 
     /// Parses a leading 4-digit year out of strings like "2001" (TYER) or
@@ -122,13 +158,16 @@ public enum MetadataReader {
     /// iTunes `trkn`/`disk` atoms store the one-based item number in bytes
     /// 2...3 as an unsigned big-endian integer. Some encoders expose a string
     /// instead, so accept that representation first.
-    private static func iTunesIndex(from item: AVMetadataItem) async -> Int? {
-        if let raw = try? await item.load(.stringValue), let value = leadingInt(in: raw) {
-            return value
+    private static func iTunesIndex(from item: AVMetadataItem) async -> IndexPair {
+        if let raw = try? await item.load(.stringValue), leadingInt(in: raw) != nil {
+            return indexPair(in: raw)
         }
-        guard let data = try? await item.load(.dataValue), data.count >= 4 else { return nil }
+        guard let data = try? await item.load(.dataValue), data.count >= 4 else {
+            return IndexPair(index: nil, total: nil)
+        }
         let bytes = [UInt8](data)
         let value = Int(bytes[2]) << 8 | Int(bytes[3])
-        return value > 0 ? value : nil
+        let total = data.count >= 6 ? Int(bytes[4]) << 8 | Int(bytes[5]) : 0
+        return IndexPair(index: value > 0 ? value : nil, total: total > 0 ? total : nil)
     }
 }
