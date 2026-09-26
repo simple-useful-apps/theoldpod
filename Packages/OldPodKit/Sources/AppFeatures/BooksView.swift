@@ -12,9 +12,6 @@ public struct BooksView: View {
     @State private var namingBook = false
     @State private var pickingFiles = false
     @State private var title = ""
-    @State private var importing = false
-    @State private var importError: String?
-    @State private var importProgress: ImportProgress?
     @State private var searchText = ""
     @State private var deletionRequest: LibraryDeletionRequest?
 
@@ -35,7 +32,7 @@ public struct BooksView: View {
                     Text("Import a book folder or select its chapter files. Each book keeps its own listening position.")
                 } actions: {
                     Button("Import Book") { title = ""; namingBook = true }
-                        .disabled(importing)
+                        .disabled(coordinator.importer.isImporting)
                 }
             } else {
                 List(bookNames.filter { searchText.isEmpty || $0.localizedStandardContains(searchText) }, id: \.self) { name in
@@ -89,17 +86,11 @@ public struct BooksView: View {
                 Button {
                     title = ""; namingBook = true
                 } label: {
-                    Label(importing ? "Importing…" : "Import Book", systemImage: "plus")
+                    Label(coordinator.importer.isImporting ? "Importing…" : "Import Book", systemImage: "plus")
                 }
-                .disabled(importing)
+                .disabled(coordinator.importer.isImporting)
             }
-            if let progress = importProgress {
-                ToolbarItem(placement: .automatic) {
-                    Text("\(progress.description) (\(progress.completed) of \(progress.total))")
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-            }
+            ToolbarItem(placement: .automatic) { ImportProgressLabel(coordinator.importer) }
         }
         .alert("Import Book", isPresented: $namingBook) {
             TextField("Book title", text: $title)
@@ -110,21 +101,11 @@ public struct BooksView: View {
             Text("Name the book, then select its folder or all its chapter files. Originals are left unchanged.")
         }
         .fileImporter(isPresented: $pickingFiles, allowedContentTypes: ImportService.supportedContentTypes, allowsMultipleSelection: true) { result in
-            guard case let .success(urls) = result, !importing else { return }
-            importing = true
-            let bookTitle = title
-            Task {
-                let result = await ImportService(libraryRoot: coordinator.libraryRoot).importAudiobook(at: urls, title: bookTitle) { progress in
-                    importProgress = progress
-                }
-                importing = false
-                importProgress = nil
-                importError = result.report
+            if case let .success(urls) = result {
+                coordinator.importer.importAudiobook(at: urls, title: title)
             }
         }
-        .alert("Book Import", isPresented: Binding(get: { importError != nil }, set: { if !$0 { importError = nil } })) {
-            Button("OK", role: .cancel) {}
-        } message: { Text(importError ?? "") }
+        .importReportAlert(coordinator.importer)
         .libraryDeletionConfirmation(request: $deletionRequest, coordinator: coordinator)
     }
 

@@ -31,6 +31,7 @@ public final class LibraryCoordinator {
     public let isCloudLibrary: Bool
     public let player: PlayerController
     public let nowPlaying: NowPlayingBridge
+    public private(set) var importer: LibraryImporter!
     public private(set) var lastChecked: Date?
     public private(set) var refreshError: String?
     public private(set) var isDeletingLibraryItems = false
@@ -97,6 +98,9 @@ public final class LibraryCoordinator {
         let playlistSync = PlaylistFileSync(store: PlaylistFileStore(directory: playlistsDirectory), container: container)
         self.playlistSync = playlistSync
         PlaylistOps.fileSync = playlistSync
+        importer = LibraryImporter(libraryRoot: libraryRoot) { [weak self] in
+            _ = await self?.refreshLibrary()
+        }
     }
 
     /// Resolves the library location (cloud if available, else the local

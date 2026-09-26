@@ -22,14 +22,9 @@ struct MacRootView: View {
     @State private var selection: SidebarItem? = .songs
     @State private var playlistSearch = ""
 
-    @State private var playlistPendingRename: Playlist?
-    @State private var renameText = ""
+    @State private var rename: PlaylistRename?
     @State private var playlistPendingDelete: Playlist?
-
     @State private var isImporterPresented = false
-    @State private var isImporting = false
-    @State private var importProgress: ImportProgress?
-    @State private var importReport: String?
 
     init(coordinator: LibraryCoordinator) {
         self.coordinator = coordinator
@@ -57,15 +52,11 @@ struct MacRootView: View {
         .toolbar {
             ToolbarItem(placement: .automatic) { LibraryStatusButton(coordinator: coordinator) }
             ToolbarItem(placement: .automatic) {
-                if isImporting {
+                if coordinator.importer.isImporting {
                     HStack(spacing: 6) {
                         ProgressView()
                             .controlSize(.small)
-                        if let progress = importProgress {
-                            Text("\(progress.description) (\(progress.completed) of \(progress.total))")
-                                .lineLimit(1)
-                                .foregroundStyle(.secondary)
-                        }
+                        ImportProgressLabel(coordinator.importer)
                     }
                 }
             }
@@ -86,23 +77,13 @@ struct MacRootView: View {
             allowsMultipleSelection: true
         ) { result in
             if case let .success(urls) = result {
-                startImport(of: urls)
+                coordinator.importer.importFiles(at: urls)
             }
         }
         .dropDestination(for: URL.self) { urls, _ in
-            startImport(of: urls)
+            coordinator.importer.importFiles(at: urls)
         }
-        .alert(
-            "Import Finished with Issues",
-            isPresented: Binding(
-                get: { importReport != nil },
-                set: { if !$0 { importReport = nil } }
-            )
-        ) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(importReport ?? "")
-        }
+        .importReportAlert(coordinator.importer)
         .task {
             coordinator.start()
             SpacebarPlayPause.install(player: coordinator.player)
@@ -116,7 +97,8 @@ struct MacRootView: View {
     }
 
     private var sidebar: some View {
-        List(selection: $selection) {
+        let filteredPlaylists = playlists.filter { playlistSearch.isEmpty || $0.name.localizedStandardContains(playlistSearch) }
+        return List(selection: $selection) {
             Section("Library") {
                 Label("Songs", systemImage: "music.note").tag(SidebarItem.songs)
                 Label("Artists", systemImage: "music.mic").tag(SidebarItem.artists)
@@ -127,16 +109,16 @@ struct MacRootView: View {
                 TextField("Search Playlists", text: $playlistSearch)
                     .textFieldStyle(.roundedBorder)
                     .accessibilityLabel("Search Playlists")
-                ForEach(playlists.filter { playlistSearch.isEmpty || $0.name.localizedStandardContains(playlistSearch) }) { playlist in
+                ForEach(filteredPlaylists) { playlist in
                     Label(playlist.name, systemImage: "music.note.list")
                         .tag(SidebarItem.playlist(playlist.persistentModelID))
                         .contextMenu {
-                            Button("Rename\u{2026}") { beginRename(playlist) }
+                            Button("Rename\u{2026}") { rename = PlaylistRename(playlist) }
                             Divider()
                             Button("Delete", role: .destructive) { playlistPendingDelete = playlist }
                         }
                 }
-                if !playlistSearch.isEmpty, !playlists.contains(where: { $0.name.localizedStandardContains(playlistSearch) }) {
+                if !playlistSearch.isEmpty, filteredPlaylists.isEmpty {
                     Text("No matching playlists").foregroundStyle(.secondary)
                 }
             } header: {
@@ -155,40 +137,11 @@ struct MacRootView: View {
             }
         }
         .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 260)
-        .alert(
-            "Rename Playlist",
-            isPresented: Binding(
-                get: { playlistPendingRename != nil },
-                set: { if !$0 { playlistPendingRename = nil } }
-            )
-        ) {
-            TextField("Name", text: $renameText)
-            Button("Save") {
-                if let playlist = playlistPendingRename {
-                    PlaylistOps.rename(playlist, to: renameText, in: modelContext)
-                }
-                playlistPendingRename = nil
+        .playlistRenameAlert($rename)
+        .playlistDeleteConfirmation(for: $playlistPendingDelete) { deleted in
+            if selection == .playlist(deleted.persistentModelID) {
+                selection = .songs
             }
-            Button("Cancel", role: .cancel) {
-                playlistPendingRename = nil
-            }
-        }
-        .confirmationDialog(
-            "Delete Playlist?",
-            isPresented: Binding(
-                get: { playlistPendingDelete != nil },
-                set: { if !$0 { playlistPendingDelete = nil } }
-            ),
-            presenting: playlistPendingDelete
-        ) { playlist in
-            Button("Delete \u{201C}\(playlist.name)\u{201D}", role: .destructive) {
-                deletePlaylist(playlist)
-            }
-            Button("Cancel", role: .cancel) {
-                playlistPendingDelete = nil
-            }
-        } message: { _ in
-            Text("This can\u{2019}t be undone.")
         }
     }
 
@@ -225,38 +178,7 @@ struct MacRootView: View {
     private func createPlaylist() {
         let playlist = PlaylistOps.create(name: "New Playlist", in: modelContext)
         selection = .playlist(playlist.persistentModelID)
-        beginRename(playlist)
-    }
-
-    private func beginRename(_ playlist: Playlist) {
-        renameText = playlist.name
-        playlistPendingRename = playlist
-    }
-
-    private func deletePlaylist(_ playlist: Playlist) {
-        if selection == .playlist(playlist.persistentModelID) {
-            selection = .songs
-        }
-        PlaylistOps.delete(playlist, in: modelContext)
-        playlistPendingDelete = nil
-    }
-
-    // MARK: - Import
-
-    private func startImport(of urls: [URL]) {
-        guard !urls.isEmpty, !isImporting else { return }
-        isImporting = true
-        Task {
-            let result = await ImportService(libraryRoot: coordinator.libraryRoot).importFiles(at: urls) { progress in
-                importProgress = progress
-            }
-            if !result.imported.isEmpty {
-                _ = await coordinator.refreshLibrary()
-            }
-            isImporting = false
-            importProgress = nil
-            importReport = result.report
-        }
+        rename = PlaylistRename(playlist)
     }
 }
 

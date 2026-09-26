@@ -85,5 +85,9 @@ final class PlaylistUITests: XCTestCase {
         if deleteButton.waitForExistence(timeout: 3) {
             deleteButton.tap()
         }
+        let confirmButton = app.buttons["Delete \u{201C}\(playlistName)\u{201D}"]
+        if confirmButton.waitForExistence(timeout: 3) {
+            confirmButton.tap()
+        }
     }
 }
