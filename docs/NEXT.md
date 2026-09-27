@@ -1,6 +1,6 @@
 # v1.1 goal prompt — five workstreams, no Apple Developer account required
 
-You are working on theoldpod (this repo). Read `CLAUDE.md`, `GOAL.md`, and `docs/BACKLOG.md` first; load the `design-language` skill before any UI work. Everything below is verifiable locally: `make test` (package), `make uitest` (iOS, 8 tests), `make mac-uitest` (Mac, 7 tests) must stay green throughout, extended wherever behavior changes. Two consecutive green UI-suite runs after UI changes. Commit per workstream with evidence in the message; push to origin.
+You are working on The Old Pod (this repo). Read `CLAUDE.md`, `GOAL.md`, and `docs/BACKLOG.md` first; load the `design-language` skill before any UI work. Everything below is verifiable locally: `make test` (package), `make uitest` (iOS, 8 tests), `make mac-uitest` (Mac, 7 tests) must stay green throughout, extended wherever behavior changes. Two consecutive green UI-suite runs after UI changes. Commit per workstream with evidence in the message; push to origin.
 
 Established session facts: fixtures are 4 tagged MP3s (seeded in both app containers); Mac visual verification = CGWindowList window IDs + `screencapture -l<id>` + reading the PNG (Screen Recording is granted); the Mac app has a `--uitest-reset-playlists` launch-arg test hook; macOS XCUITest reads text via `.value` not `.label`; swiftformat strips `@Suite`; UI tests cannot run while the screen is locked.
 

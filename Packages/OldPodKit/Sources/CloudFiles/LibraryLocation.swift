@@ -52,7 +52,11 @@ public enum LibraryLocation {
             .appendingPathComponent("Documents", isDirectory: true)
             .appendingPathComponent("Music", isDirectory: true)
         if !FileManager.default.fileExists(atPath: musicRoot.path) {
-            try? FileManager.default.createDirectory(at: musicRoot, withIntermediateDirectories: true)
+            do {
+                try FileManager.default.createDirectory(at: musicRoot, withIntermediateDirectories: true)
+            } catch {
+                return nil
+            }
         }
         return musicRoot
     }

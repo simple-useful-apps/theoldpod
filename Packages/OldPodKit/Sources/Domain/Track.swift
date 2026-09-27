@@ -1,8 +1,8 @@
 import Foundation
 import SwiftData
 
-/// A single MP3 file in the library, indexed from the file system. All fields
-/// other than `relativePath` are derived from ID3 metadata (or filename/file
+/// A single audio file in the library, indexed from the file system. All fields
+/// other than `relativePath` are derived from embedded metadata (or filename/file
 /// attributes as a fallback) and can always be rebuilt by re-scanning the file.
 @Model
 public final class Track {

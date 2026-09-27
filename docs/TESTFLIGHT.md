@@ -5,7 +5,7 @@ Everything on the build side is staged (`scripts/testflight.sh`, export plists, 
 ## One-time — you, in App Store Connect (no code)
 
 1. **Accept agreements** — appstoreconnect.apple.com → Business/Agreements. A free app needs only the free-apps agreement; no banking or tax forms. *This silently blocks the first upload if skipped.*
-2. **Create the app record** — App Store Connect → Apps → **+ New App**. Platform iOS (do iOS first), name "theoldpod", primary language, bundle ID **com.mattreed.theoldpod**, SKU anything (e.g. `theoldpod-ios`). The Mac app is a separate record with **com.mattreed.theoldpod.mac** when you're ready for it.
+2. **Create the app record** — App Store Connect → Apps → **+ New App**. Platform iOS (do iOS first), name "The Old Pod", primary language, bundle ID **com.mattreed.theoldpod**, SKU anything (e.g. `theoldpod-ios`). The Mac app is a separate record with **com.mattreed.theoldpod.mac** when you're ready for it.
 3. **Upload auth** — App Store Connect → Users and Access → Integrations → **App Store Connect API** → generate a key. **Give it the Admin role** — App Manager can upload but can't create the distribution certificate/profile that automatic signing needs on a fresh account, and you'll hit "Cloud signing permission error." Download the `.p8` (one-time), note the Key ID (it's in the filename `AuthKey_<KEYID>.p8`) and the Issuer ID (top of the Keys page). Key roles can't be edited after creation — regenerate if wrong.
 
 ## Per build

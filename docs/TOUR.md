@@ -1,6 +1,6 @@
 # A tour of the codebase
 
-A reading order for learning how theoldpod works. Total source is small (~5k lines); this path covers the load-bearing 80% in roughly an afternoon. Everything interesting lives in `Packages/OldPodKit/Sources/`; the two app targets in `Apps/` are deliberately thin shells.
+A reading order for learning how The Old Pod works. Total source is small (~5k lines); this path covers the load-bearing 80% in roughly an afternoon. Everything interesting lives in `Packages/OldPodKit/Sources/`; the two app targets in `Apps/` are deliberately thin shells.
 
 ## The one-paragraph architecture
 

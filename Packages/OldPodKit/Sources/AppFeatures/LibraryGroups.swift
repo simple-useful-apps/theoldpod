@@ -52,7 +52,7 @@ public enum LibraryGroups {
         var accumulators: [String: AlbumAccumulator] = [:]
         var order: [String] = []
 
-        for track in tracks {
+        for track in tracks where !track.isAudiobook {
             let artistRaw = track.albumArtist ?? track.artist
             let key = normalizedKey(artistRaw) + "\u{1F}" + normalizedKey(track.album)
             if accumulators[key] == nil {
@@ -74,7 +74,7 @@ public enum LibraryGroups {
         var accumulators: [String: ArtistAccumulator] = [:]
         var order: [String] = []
 
-        for track in tracks {
+        for track in tracks where !track.isAudiobook {
             let nameRaw = track.albumArtist ?? track.artist
             let key = normalizedKey(nameRaw)
             if accumulators[key] == nil {

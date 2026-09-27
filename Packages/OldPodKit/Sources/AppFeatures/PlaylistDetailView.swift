@@ -9,7 +9,7 @@ import SwiftUI
 /// disappeared render as dangling rows rather than being silently dropped,
 /// so reordering/removal still lines up with what the user sees. Play and
 /// Shuffle only ever consider resolvable tracks.
-public struct PlaylistDetailView: View {
+struct PlaylistDetailView: View {
     let playlist: Playlist
     let coordinator: LibraryCoordinator
 
@@ -19,7 +19,7 @@ public struct PlaylistDetailView: View {
     @Query private var allTracks: [Track]
     @Environment(\.modelContext) private var modelContext
 
-    public init(playlist: Playlist, coordinator: LibraryCoordinator) {
+    init(playlist: Playlist, coordinator: LibraryCoordinator) {
         self.playlist = playlist
         self.coordinator = coordinator
         let paths = Set(PlaylistOps.sortedEntries(of: playlist).map(\.trackPath))
@@ -57,7 +57,7 @@ public struct PlaylistDetailView: View {
         }
     }
 
-    public var body: some View {
+    var body: some View {
         let entries = entries
         let tracksByPath = tracksByPath
         let rows = rows(entries: entries, tracksByPath: tracksByPath)

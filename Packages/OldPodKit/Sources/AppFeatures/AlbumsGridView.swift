@@ -6,30 +6,32 @@ import SwiftUI
 /// The Albums tab: every album derived from the library's tracks, as a
 /// 2-column adaptive grid of artwork tiles. Tapping a tile pushes
 /// `AlbumDetailView` for that album.
-public struct AlbumsGridView: View {
+struct AlbumsGridView: View {
     @Query private var tracks: [Track]
+    @State private var searchText = ""
 
     private let coordinator: LibraryCoordinator
 
     private static let columns = [GridItem(.adaptive(minimum: 150), spacing: 16)]
 
-    public init(coordinator: LibraryCoordinator) {
+    init(coordinator: LibraryCoordinator) {
         self.coordinator = coordinator
     }
 
-    public var body: some View {
+    var body: some View {
         let albums = LibraryGroups.albums(from: tracks)
+        let filtered = albums.filter { searchText.isEmpty || $0.title.localizedStandardContains(searchText) || $0.artistName.localizedStandardContains(searchText) }
         Group {
             if albums.isEmpty {
                 ContentUnavailableView(
                     "No Albums Yet",
                     systemImage: "square.stack",
-                    description: Text("Drop MP3s into\n\(coordinator.libraryRoot.path)")
+                    description: Text("Drop music files into\n\(coordinator.libraryRoot.path)")
                 )
             } else {
                 ScrollView {
                     LazyVGrid(columns: Self.columns, spacing: 20) {
-                        ForEach(albums) { album in
+                        ForEach(filtered) { album in
                             NavigationLink {
                                 AlbumDetailView(album: album, coordinator: coordinator)
                             } label: {
@@ -42,6 +44,12 @@ public struct AlbumsGridView: View {
                 }
             }
         }
+        .searchable(text: $searchText, prompt: "Search Albums")
+        .overlay {
+            if !albums.isEmpty, filtered.isEmpty { ContentUnavailableView.search(text: searchText) }
+        }
+        .refreshable { await coordinator.refreshLibrary() }
+        .toolbar { ToolbarItem(placement: .automatic) { LibraryStatusButton(coordinator: coordinator) } }
     }
 }
 

@@ -1,4 +1,4 @@
-/// Watches a library folder for MP3 files appearing, changing, or disappearing.
+/// Watches a library folder for audio files appearing, changing, or disappearing.
 /// Two implementations exist: LocalFolderWatcher (DispatchSource over a local
 /// directory) and UbiquityLibraryWatcher (NSMetadataQuery over the iCloud
 /// container); the indexer consumes either through this one protocol.
@@ -7,4 +7,5 @@ public protocol LibraryFolderWatching: Sendable {
     /// folder empty). Subsequent emissions are diffs.
     func changes() -> AsyncStream<[LibraryChange]>
     func stop()
+    func refresh() async throws
 }

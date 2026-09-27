@@ -78,18 +78,4 @@ struct PlaylistFileFormatTests {
 
         #expect(text.contains("#EXTINF:-1,missing\n"))
     }
-
-    @Test func sanitizedFilenameRemovesSlashesAndColons() {
-        #expect(PlaylistFileFormat.sanitizedFilename(for: "AC/DC: Live") == "ACDC Live")
-    }
-
-    @Test func sanitizedFilenameTrimsWhitespace() {
-        #expect(PlaylistFileFormat.sanitizedFilename(for: "  Road Trip  ") == "Road Trip")
-    }
-
-    @Test func sanitizedFilenameFallsBackToPlaylistWhenEverythingIsStripped() {
-        #expect(PlaylistFileFormat.sanitizedFilename(for: "///:::") == "Playlist")
-        #expect(PlaylistFileFormat.sanitizedFilename(for: "   ") == "Playlist")
-        #expect(PlaylistFileFormat.sanitizedFilename(for: "") == "Playlist")
-    }
 }

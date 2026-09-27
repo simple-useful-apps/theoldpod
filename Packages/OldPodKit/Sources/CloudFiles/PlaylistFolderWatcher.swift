@@ -10,7 +10,7 @@ import Foundation
 /// file, then rename over the target) — how this app, and most editors,
 /// write files. A non-atomic in-place append to an existing file may not
 /// trigger an event until the next launch's startup reconcile; that's an
-/// accepted limitation, the same one `LocalFolderWatcher` has for MP3s.
+/// accepted limitation, the same one `LocalFolderWatcher` has for audio files.
 public final class PlaylistFolderWatcher: Sendable {
     private let engine: PlaylistWatcherEngine
 

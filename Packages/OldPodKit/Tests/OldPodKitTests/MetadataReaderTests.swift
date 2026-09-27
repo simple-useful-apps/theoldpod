@@ -2,6 +2,18 @@ import MetadataImport
 import Testing
 
 struct MetadataReaderTests {
+    @Test func readsM4ACommonMetadataAndDuration() async throws {
+        let metadata = try await MetadataReader.read(from: TestFixtures.url("m4a-tagged.m4a"))
+
+        #expect(metadata.title == "Fixture M4A")
+        #expect(metadata.artist == "The Fixtures")
+        #expect(metadata.album == "Test Tones")
+        #expect(metadata.trackNumber == 4)
+        #expect(metadata.year == 2001)
+        #expect(metadata.genre == "Electronic")
+        #expect(metadata.duration > 2.9 && metadata.duration < 3.2)
+    }
+
     @Test func readsCBRTaggedFixture() async throws {
         let metadata = try await MetadataReader.read(from: TestFixtures.url("cbr-tagged.mp3"))
         #expect(metadata.title == "Fixture One")

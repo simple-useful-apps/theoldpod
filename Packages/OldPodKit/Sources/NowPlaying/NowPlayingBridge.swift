@@ -46,12 +46,34 @@ public final class NowPlayingBridge {
         commandCenter.nextTrackCommand.removeTarget(nil)
         commandCenter.previousTrackCommand.removeTarget(nil)
         commandCenter.changePlaybackPositionCommand.removeTarget(nil)
+        commandCenter.skipBackwardCommand.removeTarget(nil)
+        commandCenter.skipForwardCommand.removeTarget(nil)
+        commandCenter.changePlaybackRateCommand.removeTarget(nil)
 
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
     }
 
     private func registerCommandHandlers() {
         let commandCenter = MPRemoteCommandCenter.shared()
+
+        commandCenter.skipBackwardCommand.preferredIntervals = [15]
+        commandCenter.skipForwardCommand.preferredIntervals = [15]
+        commandCenter.changePlaybackRateCommand.supportedPlaybackRates = PlayerController.supportedSpeeds.map { NSNumber(value: $0) }
+        commandCenter.skipBackwardCommand.addTarget { [player] _ in
+            guard player.current != nil else { return .noSuchContent }
+            player.skip(by: -15)
+            return .success
+        }
+        commandCenter.skipForwardCommand.addTarget { [player] _ in
+            guard player.current != nil else { return .noSuchContent }
+            player.skip(by: 15)
+            return .success
+        }
+        commandCenter.changePlaybackRateCommand.addTarget { [player] event in
+            guard let event = event as? MPChangePlaybackRateCommandEvent else { return .commandFailed }
+            player.setSpeed(event.playbackRate)
+            return .success
+        }
 
         commandCenter.playCommand.addTarget { [player] _ in
             guard player.current != nil else { return .noSuchContent }
@@ -101,6 +123,9 @@ public final class NowPlayingBridge {
             _ = player.current
             _ = player.isPlaying
             _ = player.seekCount
+            _ = player.playbackSpeed
+            _ = player.currentDuration
+            _ = player.canSeek
         } onChange: { [weak self] in
             Task { @MainActor in
                 guard let self, self.isActive else { return }
@@ -111,6 +136,14 @@ public final class NowPlayingBridge {
     }
 
     private func pushNowPlayingInfo() {
+        let commands = MPRemoteCommandCenter.shared()
+        let isBook = player.current?.bookID != nil
+        commands.skipBackwardCommand.isEnabled = isBook && player.canSeek
+        commands.skipForwardCommand.isEnabled = isBook && player.canSeek
+        commands.changePlaybackRateCommand.isEnabled = isBook
+        commands.changePlaybackPositionCommand.isEnabled = player.canSeek
+        commands.nextTrackCommand.isEnabled = !isBook
+        commands.previousTrackCommand.isEnabled = !isBook
         guard let current = player.current else {
             MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
             return
@@ -120,9 +153,10 @@ public final class NowPlayingBridge {
             MPMediaItemPropertyTitle: current.title,
             MPMediaItemPropertyArtist: current.artist,
             MPMediaItemPropertyAlbumTitle: current.album,
-            MPMediaItemPropertyPlaybackDuration: current.duration,
+            MPMediaItemPropertyPlaybackDuration: player.currentDuration,
             MPNowPlayingInfoPropertyElapsedPlaybackTime: player.currentTime,
-            MPNowPlayingInfoPropertyPlaybackRate: player.isPlaying ? 1.0 : 0.0,
+            MPNowPlayingInfoPropertyPlaybackRate: player.isPlaying ? player.playbackSpeed : 0,
+            MPNowPlayingInfoPropertyDefaultPlaybackRate: player.playbackSpeed,
         ]
         if let artwork = artwork(for: current.artworkID) {
             info[MPMediaItemPropertyArtwork] = artwork

@@ -17,22 +17,21 @@ public enum PlaylistOps {
     /// tests that don't care about file sync at all.
     public static var fileSync: PlaylistFileSync?
 
-    /// Creates and inserts a new playlist. `name` is normalized (see
-    /// `normalizedName`); an empty result becomes "New Playlist".
+    /// Creates a playlist with a safe, unique filename. Empty names become
+    /// "New Playlist"; collisions receive a numbered suffix.
     @discardableResult
     public static func create(name: String, in context: ModelContext) -> Playlist {
-        let playlist = Playlist(name: normalizedName(name))
+        let playlist = Playlist(name: uniqueName(name, in: context))
         context.insert(playlist)
         save(context)
         fileSync?.playlistChanged(playlist, in: context)
         return playlist
     }
 
-    /// Renames `playlist`. `name` is normalized (see `normalizedName`); an
-    /// empty result becomes "New Playlist".
+    /// Renames without overwriting another playlist's file.
     public static func rename(_ playlist: Playlist, to name: String, in context: ModelContext) {
         let oldName = playlist.name
-        let newName = normalizedName(name)
+        let newName = uniqueName(name, excluding: playlist, in: context)
         playlist.name = newName
         save(context)
         if newName != oldName {
@@ -102,14 +101,19 @@ public enum PlaylistOps {
 
     // MARK: - Helpers
 
-    /// Trims whitespace/newlines, then strips every "/" and ":" character —
-    /// playlist names double as `.m3u8` filename stems for file sync (see
-    /// `PlaylistFileSync`), so they must be valid path components on both
-    /// platforms. An empty result becomes "New Playlist".
-    private static func normalizedName(_ name: String) -> String {
-        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        let stripped = trimmed.filter { $0 != "/" && $0 != ":" }
-        return stripped.isEmpty ? "New Playlist" : stripped
+    /// Names are file identities. Never overwrite another playlist when
+    /// creating or renaming, including case-only collisions on Apple disks.
+    private static func uniqueName(_ name: String, excluding playlist: Playlist? = nil, in context: ModelContext) -> String {
+        let base = PlaylistFileFormat.sanitizedFilename(for: name)
+        let playlists = (try? context.fetch(FetchDescriptor<Playlist>())) ?? []
+        let occupied = Set(playlists.filter { $0 !== playlist }.map { $0.name.lowercased() })
+        var candidate = base
+        var suffix = 2
+        while occupied.contains(candidate.lowercased()) {
+            candidate = "\(base) \(suffix)"
+            suffix += 1
+        }
+        return candidate
     }
 
     private static func renumber(_ entries: [PlaylistEntry]) {

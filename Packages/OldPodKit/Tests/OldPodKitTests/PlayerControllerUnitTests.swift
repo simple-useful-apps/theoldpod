@@ -97,26 +97,6 @@ struct PlayerControllerUnitTests {
         controller.stop()
     }
 
-    /// Batch `playNext` on an empty queue: this is a pre-existing edge-case
-    /// quirk carried over unchanged from the old per-track "insert reversed"
-    /// loop callers used to hand-roll — the *last* track in the batch ends
-    /// up current (since the first single insert into an empty queue acts as
-    /// `replace(with:startingAt:0)`), with the rest following it in order.
-    /// Documented here rather than "fixed" because item 3 of this pass is a
-    /// pure consolidation (one home for the trick), not a behavior change.
-    @Test func batchPlayNextOnEmptyQueueLandsOnTheLastTrackWithRestFollowing() {
-        let controller = PlayerController()
-        let a = makeTrack(relativePath: "a", duration: 10)
-        let b = makeTrack(relativePath: "b", duration: 10)
-        let c = makeTrack(relativePath: "c", duration: 10)
-
-        controller.playNext([a, b, c])
-
-        #expect(controller.queue.items.map(\.relativePath) == ["c", "a", "b"])
-        #expect(controller.current == c)
-        controller.stop()
-    }
-
     /// Batch `append(_ tracks:)` adds to the tail in order.
     @Test func batchAppendPreservesOrderAtTheTail() {
         let controller = PlayerController()

@@ -1,0 +1,3 @@
+# SwiftFormat config. Run: `make format` (or `make lint` to check only).
+--swiftversion 6.0
+--exclude Packages/OldPodKit/.build,ThirdParty,.build

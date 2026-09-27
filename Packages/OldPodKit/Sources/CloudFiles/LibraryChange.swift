@@ -1,6 +1,6 @@
 import Foundation
 
-/// A single MP3 file discovered in the library folder.
+/// A single supported audio file discovered in the library folder.
 public struct LibraryFile: Sendable, Equatable {
     public let relativePath: String
     public let url: URL

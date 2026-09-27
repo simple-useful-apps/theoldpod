@@ -108,7 +108,7 @@ struct LocalFolderWatcherTests {
         #expect(upsertedPaths(second) == ["song1.mp3"])
     }
 
-    @Test func nonMP3AndHiddenFilesAreIgnored() async throws {
+    @Test func unsupportedAndHiddenFilesAreIgnoredWhileM4AIsDiscovered() async throws {
         let root = try makeTempDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
 
@@ -119,8 +119,8 @@ struct LocalFolderWatcherTests {
         let first = try await collector.next() // initial snapshot of empty folder
         #expect(first.isEmpty)
 
-        // Add an ignorable text file and an ignorable hidden mp3 alongside a
-        // real mp3 in the same debounce window, so a real emission is
+        // Add an ignorable text file and an ignorable hidden MP3 alongside
+        // supported visible files in the same debounce window, so an emission is
         // guaranteed to fire and we can assert the ignorable paths never
         // appear in it (asserting "no event ever arrives" isn't otherwise
         // provable in bounded time).
@@ -129,9 +129,10 @@ struct LocalFolderWatcherTests {
         )
         try placeFixture("cbr-tagged.mp3", in: root, at: ".hidden.mp3")
         try placeFixture("vbr-tagged.mp3", in: root, at: "visible.mp3")
+        try placeFixture("cbr-tagged.mp3", in: root, at: "visible.m4a")
 
         let changes = try await collector.next()
-        #expect(upsertedPaths(changes) == ["visible.mp3"])
+        #expect(upsertedPaths(changes) == ["visible.m4a", "visible.mp3"])
     }
 }
 

@@ -1,101 +1,23 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>theoldpod — a music player for people who own their music</title>
-<meta name="description" content="An iPhone and Mac MP3 player with no store, no streaming, no account, and no ads. Your library is a folder of files.">
-<link rel="icon" href="assets/icon.png">
-<style>
-  :root {
-    --bg: #fbfbf9;
-    --fg: #1c1c1e;
-    --muted: #6e6e73;
-    --accent: #3e5f9c;
-    --rule: rgba(0, 0, 0, 0.12);
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #101318;
-      --fg: #f2f2ef;
-      --muted: #98989f;
-      --accent: #8fadd9;
-      --rule: rgba(255, 255, 255, 0.14);
-    }
-  }
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-    background: var(--bg);
-    color: var(--fg);
-    font: 17px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-    -webkit-font-smoothing: antialiased;
-  }
-  main {
-    max-width: 34rem;
-    margin: 0 auto;
-    padding: 5rem 1.5rem 4rem;
-  }
-  .icon {
-    width: 96px;
-    height: 96px;
-    border-radius: 22px;
-    display: block;
-    margin-bottom: 1.75rem;
-  }
-  h1 {
-    font-size: 1.6rem;
-    font-weight: 650;
-    letter-spacing: -0.01em;
-    margin-bottom: 0.4rem;
-  }
-  .tagline {
-    font-size: 1.25rem;
-    color: var(--muted);
-    margin-bottom: 2.25rem;
-  }
-  p { margin-bottom: 1.1rem; }
-  hr {
-    border: none;
-    border-top: 1px solid var(--rule);
-    margin: 2.5rem 0;
-  }
-  h2 {
-    font-size: 0.8rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--muted);
-    margin-bottom: 0.75rem;
-  }
-  ul { list-style: none; }
-  li {
-    padding: 0.55rem 0;
-    border-bottom: 1px solid var(--rule);
-  }
-  li:last-child { border-bottom: none; }
-  li strong { font-weight: 600; }
-  li span { color: var(--muted); }
-  .time {
-    font-variant-numeric: tabular-nums;
-    color: var(--muted);
-    float: right;
-  }
-  footer {
-    margin-top: 3rem;
-    font-size: 0.9rem;
-    color: var(--muted);
-  }
-  a { color: var(--accent); text-decoration: none; }
-  a:hover { text-decoration: underline; }
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>The Old Pod — a music player for people who own their music</title>
+  <meta name="description" content="An iPhone and Mac MP3 player with no store, no streaming, no account, and no ads. Your library is a folder of files.">
+  <meta name="theme-color" content="#101318" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#fbfbf9" media="(prefers-color-scheme: light)">
+  <link rel="icon" href="assets/icon.png">
+  <link rel="apple-touch-icon" href="assets/icon.png">
+  <link rel="stylesheet" href="assets/site.css">
 </head>
 <body>
 <main>
-  <img class="icon" src="assets/icon.png" alt="theoldpod app icon — a click wheel on a blue background">
-  <h1>theoldpod</h1>
+  <img class="icon" src="assets/icon.png" alt="The Old Pod app icon — a click wheel on a blue background">
+  <h1>The Old Pod</h1>
   <p class="tagline">A music player for people who own their music.</p>
 
-  <p>theoldpod is a pair of apps — iPhone&nbsp;and&nbsp;Mac — that play the MP3s you already have. There is no store, no streaming, no account to create, and no ads. Your library is a folder of files in your iCloud&nbsp;Drive; the apps are two views onto that folder.</p>
+  <p>The Old Pod is a pair of apps — iPhone&nbsp;and&nbsp;Mac — that play the MP3s you already have. There is no store, no streaming, no account to create, and no ads. Your library is a folder of files in your iCloud&nbsp;Drive; the apps are two views onto that folder.</p>
   <p>Drag an album in from the Finder, and it's on your phone. Delete a file, and it's gone. The files are the truth; the app never holds your music hostage.</p>
 
   <hr>
@@ -111,10 +33,10 @@
 
   <h2>What it does</h2>
   <ul>
-    <li>Artists, Albums, Songs, Playlists <span class="time">both apps</span></li>
-    <li>Queue, shuffle, repeat, search <span class="time">both apps</span></li>
-    <li>Lock Screen &amp; Control Center playback <span class="time">iPhone</span></li>
-    <li>Sidebar, song table, media keys, mini player <span class="time">Mac</span></li>
+    <li>Artists, Albums, Songs, Playlists <span class="meta">both apps</span></li>
+    <li>Queue, shuffle, repeat, search <span class="meta">both apps</span></li>
+    <li>Lock Screen &amp; Control Center playback <span class="meta">iPhone</span></li>
+    <li>Sidebar, song table, media keys, mini player <span class="meta">Mac</span></li>
   </ul>
 
   <hr>
@@ -122,7 +44,8 @@
   <p>It works the way music software used to, back when it did less and did it well: you see your music, you pick something, and it plays.</p>
 
   <footer>
-    <p>theoldpod is in development. <a href="https://github.com/mattreed555/theoldpod">Source on GitHub</a></p>
+    <p>The Old Pod is in development.</p>
+    <p><a href="privacy.html">Privacy</a> · <a href="support.html">Support</a> · <a href="https://github.com/mattreed555/theoldpod">Source on GitHub</a></p>
   </footer>
 </main>
 </body>

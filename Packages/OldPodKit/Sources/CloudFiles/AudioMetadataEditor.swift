@@ -1,0 +1,573 @@
+#if os(macOS)
+    import AVFoundation
+    import CoreMedia
+    import Darwin
+    import Foundation
+    import MetadataImport
+
+    /// The ordinary music tags The Old Pod can edit. `nil` means remove the
+    /// embedded value; it does not mean "leave the old value alone."
+    public struct AudioMetadataFields: Sendable, Equatable {
+        public var title: String?
+        public var artist: String?
+        public var album: String?
+        public var albumArtist: String?
+        public var genre: String?
+        public var year: Int?
+        public var trackNumber: Int?
+        public var trackTotal: Int?
+        public var discNumber: Int?
+        public var discTotal: Int?
+
+        public init(
+            title: String? = nil,
+            artist: String? = nil,
+            album: String? = nil,
+            albumArtist: String? = nil,
+            genre: String? = nil,
+            year: Int? = nil,
+            trackNumber: Int? = nil,
+            trackTotal: Int? = nil,
+            discNumber: Int? = nil,
+            discTotal: Int? = nil
+        ) {
+            self.title = title
+            self.artist = artist
+            self.album = album
+            self.albumArtist = albumArtist
+            self.genre = genre
+            self.year = year
+            self.trackNumber = trackNumber
+            self.trackTotal = trackTotal
+            self.discNumber = discNumber
+            self.discTotal = discTotal
+        }
+
+        public init(metadata: TrackMetadata) {
+            self.init(
+                title: metadata.title,
+                artist: metadata.artist,
+                album: metadata.album,
+                albumArtist: metadata.albumArtist,
+                genre: metadata.genre,
+                year: metadata.year,
+                trackNumber: metadata.trackNumber,
+                trackTotal: metadata.trackTotal,
+                discNumber: metadata.discNumber,
+                discTotal: metadata.discTotal
+            )
+        }
+
+        fileprivate var normalized: Self {
+            Self(
+                title: Self.clean(title),
+                artist: Self.clean(artist),
+                album: Self.clean(album),
+                albumArtist: Self.clean(albumArtist),
+                genre: Self.clean(genre),
+                year: year,
+                trackNumber: trackNumber,
+                trackTotal: trackTotal,
+                discNumber: discNumber,
+                discTotal: discTotal
+            )
+        }
+
+        private static func clean(_ value: String?) -> String? {
+            guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else {
+                return nil
+            }
+            return value
+        }
+    }
+
+    public enum AudioMetadataEditorError: LocalizedError, Sendable {
+        case helperMissing
+        case unavailableRoot
+        case unsafePath
+        case unsupportedFile
+        case unavailableFile
+        case invalidField(String)
+        case fileChanged
+        case rewriteFailed
+        case validationFailed
+        case replacementFailed
+
+        public var errorDescription: String? {
+            switch self {
+            case .helperMissing:
+                "The built-in metadata editor is unavailable. Reinstall The Old Pod."
+            case .unavailableRoot:
+                "The library folder changed or is unavailable. Refresh the library and try again."
+            case .unsafePath:
+                "The selected item is outside the library or has an unsafe path."
+            case .unsupportedFile:
+                "Only downloaded MP3 and M4A music files can be edited."
+            case .unavailableFile:
+                "The file isn’t downloaded or is no longer available."
+            case let .invalidField(field):
+                "Enter a valid \(field)."
+            case .fileChanged:
+                "The file changed while its information was open. Reopen Get Info and try again."
+            case .rewriteFailed:
+                "The file’s metadata couldn’t be updated. The original file is unchanged."
+            case .validationFailed:
+                "The updated file didn’t pass audio validation. The original file is unchanged."
+            case .replacementFailed:
+                "The updated file couldn’t replace the original. The original file is unchanged."
+            }
+        }
+    }
+
+    /// Opaque identity for the exact file version read into a Get Info sheet.
+    /// Callers can retain and return it, but cannot manufacture a token.
+    public struct AudioMetadataVersionToken: Sendable, Equatable {
+        fileprivate let size: Int64
+        fileprivate let modified: Date
+        fileprivate let resourceIdentifier: String?
+    }
+
+    public struct AudioMetadataEditSession: Sendable, Equatable {
+        public let fields: AudioMetadataFields
+        public let version: AudioMetadataVersionToken
+
+        fileprivate init(fields: AudioMetadataFields, version: AudioMetadataVersionToken) {
+            self.fields = fields
+            self.version = version
+        }
+    }
+
+    /// Rewrites tags by stream-copying every audio stream and optional cover
+    /// art through the app's bundled minimal FFmpeg helper. The original file
+    /// is replaced only after the candidate has been validated.
+    public struct AudioMetadataEditor: Sendable {
+        private let libraryRoot: URL
+        private let rootAnchor: RootAnchor?
+
+        public init(libraryRoot: URL) {
+            self.libraryRoot = libraryRoot.standardizedFileURL
+            rootAnchor = try? Self.captureRootAnchor(for: libraryRoot.standardizedFileURL)
+        }
+
+        /// Captures both the embedded values and the exact source version they
+        /// came from. Save must return this token so a long-open sheet cannot
+        /// overwrite a newer Finder/iCloud change with stale fields.
+        public func load(relativePath: String) async throws -> AudioMetadataEditSession {
+            let root = libraryRoot
+            let anchor = rootAnchor
+            return try await Task.detached {
+                let anchor = try Self.requireValidRoot(anchor, at: root)
+                let source = try Self.validatedFileURL(relativePath: relativePath, root: root, anchor: anchor)
+                let before = try Self.fileVersion(at: source)
+                let metadata = try await MetadataReader.read(from: source)
+                guard try Self.fileVersion(at: source) == before else {
+                    throw AudioMetadataEditorError.fileChanged
+                }
+                return AudioMetadataEditSession(
+                    fields: AudioMetadataFields(metadata: metadata),
+                    version: before.token
+                )
+            }.value
+        }
+
+        /// Returns `false` when the requested values already match the file,
+        /// allowing callers to close an unchanged sheet without touching it.
+        @discardableResult
+        public func update(
+            relativePath: String,
+            fields: AudioMetadataFields,
+            expectedVersion: AudioMetadataVersionToken
+        ) async throws -> Bool {
+            let root = libraryRoot
+            let anchor = rootAnchor
+            return try await Task.detached {
+                let anchor = try Self.requireValidRoot(anchor, at: root)
+                let source = try Self.validatedFileURL(relativePath: relativePath, root: root, anchor: anchor)
+                let requested = try Self.validated(fields.normalized)
+                let originalVersion = try Self.fileVersion(at: source)
+                guard originalVersion == FileVersion(token: expectedVersion) else {
+                    throw AudioMetadataEditorError.fileChanged
+                }
+                let originalMetadata = try await MetadataReader.read(from: source)
+                guard try Self.fileVersion(at: source) == originalVersion else {
+                    throw AudioMetadataEditorError.fileChanged
+                }
+                let originalFields = AudioMetadataFields(metadata: originalMetadata).normalized
+                guard originalFields != requested else { return false }
+                guard let helper = Self.helperURL else { throw AudioMetadataEditorError.helperMissing }
+
+                let temporaryDirectory = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("TheOldPod-Metadata-\(UUID().uuidString)", isDirectory: true)
+                try FileManager.default.createDirectory(at: temporaryDirectory, withIntermediateDirectories: true)
+                defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
+
+                let fileExtension = source.pathExtension.lowercased()
+                let stagedInput = temporaryDirectory.appendingPathComponent("input.\(fileExtension)")
+                // A hidden sibling with the real extension keeps the final
+                // rename on one volume while still letting AVFoundation infer
+                // the candidate's container during validation.
+                let candidate = source.deletingLastPathComponent()
+                    .appendingPathComponent(".theoldpod-metadata-\(UUID().uuidString).\(fileExtension)")
+                defer { try? FileManager.default.removeItem(at: candidate) }
+                do {
+                    try FileManager.default.copyItem(at: source, to: stagedInput)
+                } catch {
+                    throw AudioMetadataEditorError.unavailableFile
+                }
+
+                let originalAudio = try await Self.audioSignature(at: stagedInput)
+                try await Self.run(
+                    helper,
+                    input: stagedInput,
+                    output: candidate,
+                    original: originalFields,
+                    requested: requested
+                )
+                try await Self.validate(
+                    candidate,
+                    requested: requested,
+                    originalMetadata: originalMetadata,
+                    originalAudio: originalAudio
+                )
+                guard try Self.fileVersion(at: source) == originalVersion else {
+                    throw AudioMetadataEditorError.fileChanged
+                }
+                try Self.replace(
+                    source: source,
+                    with: candidate,
+                    relativePath: relativePath,
+                    root: root,
+                    anchor: anchor,
+                    originalVersion: originalVersion
+                )
+                return true
+            }.value
+        }
+
+        private struct RootIdentity: Equatable {
+            let device: UInt64
+            let inode: UInt64
+        }
+
+        private struct RootAnchor {
+            let canonicalURL: URL
+            let identity: RootIdentity
+        }
+
+        private struct FileVersion: Equatable {
+            let size: Int64
+            let modified: Date
+            let resourceIdentifier: String?
+
+            init(size: Int64, modified: Date, resourceIdentifier: String?) {
+                self.size = size
+                self.modified = modified
+                self.resourceIdentifier = resourceIdentifier
+            }
+
+            init(token: AudioMetadataVersionToken) {
+                self.init(
+                    size: token.size,
+                    modified: token.modified,
+                    resourceIdentifier: token.resourceIdentifier
+                )
+            }
+
+            var token: AudioMetadataVersionToken {
+                AudioMetadataVersionToken(
+                    size: size,
+                    modified: modified,
+                    resourceIdentifier: resourceIdentifier
+                )
+            }
+        }
+
+        private struct AudioSignature: Equatable {
+            let duration: TimeInterval
+            let streamCount: Int
+            let mediaSubtypes: [UInt32]
+            let sampleRates: [Double]
+            let channelCounts: [UInt32]
+        }
+
+        private static func validated(_ fields: AudioMetadataFields) throws -> AudioMetadataFields {
+            for (name, value) in [
+                ("title", fields.title), ("artist", fields.artist), ("album", fields.album),
+                ("album artist", fields.albumArtist), ("genre", fields.genre),
+            ] {
+                guard let value else { continue }
+                guard value.count <= 1024, !value.unicodeScalars.contains(where: { $0.value == 0 }) else {
+                    throw AudioMetadataEditorError.invalidField(name)
+                }
+            }
+            if let year = fields.year, !(1 ... 9999).contains(year) {
+                throw AudioMetadataEditorError.invalidField("year")
+            }
+            if let number = fields.trackNumber, !(1 ... 9999).contains(number) {
+                throw AudioMetadataEditorError.invalidField("track number")
+            }
+            if let total = fields.trackTotal, !(1 ... 9999).contains(total) {
+                throw AudioMetadataEditorError.invalidField("track total")
+            }
+            if let number = fields.discNumber, !(1 ... 9999).contains(number) {
+                throw AudioMetadataEditorError.invalidField("disc number")
+            }
+            if let total = fields.discTotal, !(1 ... 9999).contains(total) {
+                throw AudioMetadataEditorError.invalidField("disc total")
+            }
+            return fields
+        }
+
+        private static var helperURL: URL? {
+            #if DEBUG
+                if let override = ProcessInfo.processInfo.environment["OLDPOD_WMA_HELPER"], !override.isEmpty {
+                    return URL(fileURLWithPath: override)
+                }
+            #endif
+            guard let executable = Bundle.main.executableURL else { return nil }
+            let helper = executable.deletingLastPathComponent()
+                .appendingPathComponent("../Helpers/TheOldPodWMAConverter").standardizedFileURL
+            return FileManager.default.isExecutableFile(atPath: helper.path) ? helper : nil
+        }
+
+        private static func run(
+            _ helper: URL,
+            input: URL,
+            output: URL,
+            original: AudioMetadataFields,
+            requested: AudioMetadataFields
+        ) async throws {
+            let logURL = input.deletingLastPathComponent()
+                .appendingPathComponent("metadata-editor-\(UUID().uuidString).log")
+            defer { try? FileManager.default.removeItem(at: logURL) }
+            FileManager.default.createFile(atPath: logURL.path, contents: nil)
+            let log = try FileHandle(forWritingTo: logURL)
+            defer { try? log.close() }
+
+            var arguments = [
+                "-nostdin", "-hide_banner", "-loglevel", "error", "-y",
+                "-i", input.path, "-map", "0:a", "-map", "0:v?", "-map_metadata", "0",
+                "-map_chapters", "0", "-c", "copy",
+            ]
+            let values: [(String, String?, String?)] = [
+                ("title", original.title, requested.title),
+                ("artist", original.artist, requested.artist),
+                ("album", original.album, requested.album),
+                ("album_artist", original.albumArtist, requested.albumArtist),
+                ("genre", original.genre, requested.genre),
+                ("date", original.year.map(String.init), requested.year.map(String.init)),
+                ("track", indexTag(number: original.trackNumber, total: original.trackTotal),
+                 indexTag(number: requested.trackNumber, total: requested.trackTotal)),
+                ("disc", indexTag(number: original.discNumber, total: original.discTotal),
+                 indexTag(number: requested.discNumber, total: requested.discTotal)),
+            ]
+            // Only changed fields are passed. This retains information the
+            // compact UI does not model, such as track/disc totals and a full
+            // release date when the displayed leading year was untouched.
+            for (key, oldValue, newValue) in values where oldValue != newValue {
+                arguments += ["-metadata", "\(key)=\(newValue ?? "")"]
+            }
+            arguments += ["-f", input.pathExtension.lowercased() == "mp3" ? "mp3" : "mp4", output.path]
+
+            let process = Process()
+            process.executableURL = helper
+            process.arguments = arguments
+            process.standardOutput = log
+            process.standardError = log
+            let box = MetadataProcessBox(process)
+            try await withTaskCancellationHandler {
+                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                    process.terminationHandler = { _ in continuation.resume() }
+                    do {
+                        try process.run()
+                        if Task.isCancelled { process.terminate() }
+                    } catch {
+                        process.terminationHandler = nil
+                        continuation.resume(throwing: error)
+                    }
+                }
+                try Task.checkCancellation()
+                guard process.terminationStatus == 0 else { throw AudioMetadataEditorError.rewriteFailed }
+            } onCancel: {
+                box.terminate()
+            }
+        }
+
+        private static func indexTag(number: Int?, total: Int?) -> String? {
+            guard let number else { return nil }
+            return total.map { "\(number)/\($0)" } ?? String(number)
+        }
+
+        private static func validate(
+            _ output: URL,
+            requested: AudioMetadataFields,
+            originalMetadata: TrackMetadata,
+            originalAudio: AudioSignature
+        ) async throws {
+            guard let size = try? output.resourceValues(forKeys: [.fileSizeKey]).fileSize, size > 0 else {
+                throw AudioMetadataEditorError.validationFailed
+            }
+            let outputAudio = try await audioSignature(at: output)
+            guard outputAudio.streamCount == originalAudio.streamCount,
+                  outputAudio.mediaSubtypes == originalAudio.mediaSubtypes,
+                  outputAudio.sampleRates == originalAudio.sampleRates,
+                  outputAudio.channelCounts == originalAudio.channelCounts,
+                  abs(outputAudio.duration - originalAudio.duration) < 0.05
+            else { throw AudioMetadataEditorError.validationFailed }
+
+            let rewritten = try await MetadataReader.read(from: output)
+            guard AudioMetadataFields(metadata: rewritten).normalized == requested,
+                  rewritten.artwork == originalMetadata.artwork
+            else { throw AudioMetadataEditorError.validationFailed }
+        }
+
+        private static func audioSignature(at url: URL) async throws -> AudioSignature {
+            let asset = AVURLAsset(url: url)
+            let playable = try await asset.load(.isPlayable)
+            let duration = try await asset.load(.duration)
+            let tracks = try await asset.loadTracks(withMediaType: .audio)
+            guard playable, duration.isNumeric, duration.seconds > 0, !tracks.isEmpty else {
+                throw AudioMetadataEditorError.validationFailed
+            }
+            var subtypes: [UInt32] = []
+            var sampleRates: [Double] = []
+            var channelCounts: [UInt32] = []
+            for track in tracks {
+                let descriptions = try await track.load(.formatDescriptions)
+                guard let description = descriptions.first else {
+                    throw AudioMetadataEditorError.validationFailed
+                }
+                subtypes.append(CMFormatDescriptionGetMediaSubType(description))
+                if let basic = CMAudioFormatDescriptionGetStreamBasicDescription(description)?.pointee {
+                    sampleRates.append(basic.mSampleRate)
+                    channelCounts.append(basic.mChannelsPerFrame)
+                } else {
+                    sampleRates.append(0)
+                    channelCounts.append(0)
+                }
+            }
+            return AudioSignature(
+                duration: duration.seconds,
+                streamCount: tracks.count,
+                mediaSubtypes: subtypes,
+                sampleRates: sampleRates,
+                channelCounts: channelCounts
+            )
+        }
+
+        private static func replace(
+            source: URL,
+            with candidate: URL,
+            relativePath: String,
+            root: URL,
+            anchor: RootAnchor,
+            originalVersion: FileVersion
+        ) throws {
+            let coordinator = NSFileCoordinator(filePresenter: nil)
+            var coordinationError: NSError?
+            var operationError: Error?
+            coordinator.coordinate(writingItemAt: source, options: .forReplacing, error: &coordinationError) { coordinatedURL in
+                do {
+                    try validateRoot(anchor, at: root)
+                    let expected = try validatedFileURL(relativePath: relativePath, root: root, anchor: anchor)
+                    guard coordinatedURL.standardizedFileURL == expected,
+                          try fileVersion(at: coordinatedURL) == originalVersion
+                    else { throw AudioMetadataEditorError.fileChanged }
+                    _ = try FileManager.default.replaceItemAt(
+                        coordinatedURL,
+                        withItemAt: candidate,
+                        backupItemName: nil,
+                        options: []
+                    )
+                } catch {
+                    operationError = error
+                }
+            }
+            if let operationError { throw operationError }
+            if coordinationError != nil { throw AudioMetadataEditorError.replacementFailed }
+        }
+
+        private static func validatedFileURL(
+            relativePath: String,
+            root: URL,
+            anchor: RootAnchor
+        ) throws -> URL {
+            try validateRoot(anchor, at: root)
+            guard !relativePath.isEmpty, !relativePath.hasPrefix("/"),
+                  !relativePath.hasPrefix("Audiobooks/")
+            else { throw AudioMetadataEditorError.unsafePath }
+            let components = relativePath.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
+            guard components.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." }),
+                  let filename = components.last,
+                  ["mp3", "m4a"].contains((filename as NSString).pathExtension.lowercased())
+            else { throw AudioMetadataEditorError.unsupportedFile }
+            let target = components.reduce(root) { $0.appendingPathComponent($1) }.standardizedFileURL
+            guard target.path.hasPrefix(root.path + "/") else { throw AudioMetadataEditorError.unsafePath }
+
+            var candidate = root
+            for component in components {
+                candidate.appendPathComponent(component)
+                let values = try candidate.resourceValues(forKeys: [.isSymbolicLinkKey, .isDirectoryKey, .isRegularFileKey])
+                guard values.isSymbolicLink != true else { throw AudioMetadataEditorError.unsafePath }
+                if candidate == target {
+                    guard values.isRegularFile == true else { throw AudioMetadataEditorError.unsupportedFile }
+                } else {
+                    guard values.isDirectory == true else { throw AudioMetadataEditorError.unsafePath }
+                }
+            }
+            return target
+        }
+
+        private static func fileVersion(at url: URL) throws -> FileVersion {
+            let values = try url.resourceValues(forKeys: [
+                .fileSizeKey, .contentModificationDateKey, .fileResourceIdentifierKey,
+            ])
+            guard let size = values.fileSize, let modified = values.contentModificationDate else {
+                throw AudioMetadataEditorError.unavailableFile
+            }
+            return FileVersion(
+                size: Int64(size),
+                modified: modified,
+                resourceIdentifier: values.fileResourceIdentifier.map { String(describing: $0) }
+            )
+        }
+
+        private static func captureRootAnchor(for root: URL) throws -> RootAnchor {
+            let canonical = root.resolvingSymlinksInPath().standardizedFileURL
+            return try RootAnchor(canonicalURL: canonical, identity: rootIdentity(of: canonical))
+        }
+
+        private static func requireValidRoot(_ anchor: RootAnchor?, at root: URL) throws -> RootAnchor {
+            guard let anchor else { throw AudioMetadataEditorError.unavailableRoot }
+            try validateRoot(anchor, at: root)
+            return anchor
+        }
+
+        private static func validateRoot(_ anchor: RootAnchor, at root: URL) throws {
+            let canonical = root.resolvingSymlinksInPath().standardizedFileURL
+            guard canonical == anchor.canonicalURL,
+                  try rootIdentity(of: canonical) == anchor.identity
+            else { throw AudioMetadataEditorError.unavailableRoot }
+        }
+
+        private static func rootIdentity(of url: URL) throws -> RootIdentity {
+            var information = stat()
+            guard lstat(url.path, &information) == 0, information.st_mode & S_IFMT == S_IFDIR else {
+                throw AudioMetadataEditorError.unavailableRoot
+            }
+            return RootIdentity(device: UInt64(information.st_dev), inode: UInt64(information.st_ino))
+        }
+    }
+
+    private final class MetadataProcessBox: @unchecked Sendable {
+        private let process: Process
+
+        init(_ process: Process) {
+            self.process = process
+        }
+
+        func terminate() {
+            if process.isRunning { process.terminate() }
+        }
+    }
+#endif

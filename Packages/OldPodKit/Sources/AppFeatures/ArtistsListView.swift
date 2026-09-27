@@ -5,26 +5,27 @@ import SwiftUI
 /// The Artists tab: every artist derived from the library's tracks, as a
 /// plain list of name + "N albums · M songs" rows. Tapping a row pushes
 /// `ArtistDetailView` for that artist.
-public struct ArtistsListView: View {
+struct ArtistsListView: View {
     @Query private var tracks: [Track]
+    @State private var searchText = ""
 
     private let coordinator: LibraryCoordinator
 
-    public init(coordinator: LibraryCoordinator) {
+    init(coordinator: LibraryCoordinator) {
         self.coordinator = coordinator
     }
 
-    public var body: some View {
+    var body: some View {
         let artists = LibraryGroups.artists(from: tracks)
         Group {
             if artists.isEmpty {
                 ContentUnavailableView(
                     "No Artists Yet",
                     systemImage: "music.mic",
-                    description: Text("Drop MP3s into\n\(coordinator.libraryRoot.path)")
+                    description: Text("Drop music files into\n\(coordinator.libraryRoot.path)")
                 )
             } else {
-                List(artists) { artist in
+                List(artists.filter { searchText.isEmpty || $0.name.localizedStandardContains(searchText) }) { artist in
                     NavigationLink {
                         ArtistDetailView(artist: artist, coordinator: coordinator)
                     } label: {
@@ -40,6 +41,14 @@ public struct ArtistsListView: View {
                 .listStyle(.plain)
             }
         }
+        .searchable(text: $searchText, prompt: "Search Artists")
+        .overlay {
+            if !artists.isEmpty, !searchText.isEmpty, !artists.contains(where: { $0.name.localizedStandardContains(searchText) }) {
+                ContentUnavailableView.search(text: searchText)
+            }
+        }
+        .refreshable { await coordinator.refreshLibrary() }
+        .toolbar { ToolbarItem(placement: .automatic) { LibraryStatusButton(coordinator: coordinator) } }
     }
 
     private func summary(for artist: ArtistGroup) -> String {

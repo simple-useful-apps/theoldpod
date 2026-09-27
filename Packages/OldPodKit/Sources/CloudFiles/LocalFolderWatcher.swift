@@ -1,6 +1,7 @@
 import Foundation
+import Synchronization
 
-/// Watches a local folder (recursively) for `*.mp3` files using
+/// Watches a local folder (recursively) for supported audio files using
 /// `DispatchSource` file-system-object sources on the root and every
 /// subdirectory. File events are debounced and coalesced into a rescan that's
 /// diffed against the previous snapshot.
@@ -18,18 +19,43 @@ public final class LocalFolderWatcher: LibraryFolderWatching, Sendable {
     public func stop() {
         engine.stop()
     }
+
+    public func refresh() async throws {
+        try await engine.refresh()
+    }
 }
 
 /// All mutable watcher state lives on this actor so the watcher is safe to
 /// use from any isolation domain.
 private actor WatcherEngine {
     private let root: URL
-    private let fileManager = FileManager.default
     private var snapshot: [String: LibraryFileStat] = [:]
     private var directorySources: [URL: DispatchSourceFileSystemObject] = [:]
     private var continuation: AsyncStream<[LibraryChange]>.Continuation?
     private var debounceTask: Task<Void, Never>?
+    private var scanTask: Task<Void, Never>?
+    private var scanRequested = false
+    private var forceEmissionRequested = false
+    private var refreshWaiters: [UUID: CheckedContinuation<Void, any Error>] = [:]
+    private var hasPublishedInitialSnapshot = false
+    private var initialRetryCount = 0
+    private var session = 0
     private var started = false
+
+    /// `changes()` and `stop()` are synchronous but hop onto the actor in
+    /// unstructured Tasks, which run in no guaranteed order. Each call takes a
+    /// ticket here, synchronously, and the actor applies them strictly in
+    /// ticket order — otherwise `stop(); changes()` could start the new
+    /// session first and then have the stale stop tear it down (or be
+    /// dropped by the `started` guard), leaving a stream that never emits.
+    private nonisolated let tickets = Mutex(0)
+    private var nextTicketToApply = 0
+    private var pendingOperations: [Int: Operation] = [:]
+
+    private enum Operation {
+        case start(AsyncStream<[LibraryChange]>.Continuation)
+        case stop
+    }
 
     init(root: URL) {
         self.root = root
@@ -37,24 +63,60 @@ private actor WatcherEngine {
 
     nonisolated func changes() -> AsyncStream<[LibraryChange]> {
         AsyncStream { continuation in
-            Task { await self.start(continuation: continuation) }
+            let ticket = takeTicket()
+            Task { await self.apply(.start(continuation), ticket: ticket) }
         }
     }
 
     nonisolated func stop() {
-        Task { await self.stopIsolated() }
+        let ticket = takeTicket()
+        Task { await self.apply(.stop, ticket: ticket) }
+    }
+
+    private nonisolated func takeTicket() -> Int {
+        tickets.withLock { value in
+            defer { value += 1 }
+            return value
+        }
+    }
+
+    private func apply(_ operation: Operation, ticket: Int) {
+        pendingOperations[ticket] = operation
+        while let next = pendingOperations.removeValue(forKey: nextTicketToApply) {
+            nextTicketToApply += 1
+            switch next {
+            case let .start(continuation):
+                start(continuation: continuation)
+            case .stop:
+                stopIsolated()
+            }
+        }
     }
 
     private func start(continuation: AsyncStream<[LibraryChange]>.Continuation) {
-        guard !started else { return }
+        // A second `changes()` while running replaces the old session rather
+        // than handing back a stream that would never emit.
+        if started { stopIsolated() }
         started = true
+        session &+= 1
+        let ownSession = session
         self.continuation = continuation
         continuation.onTermination = { [weak self] _ in
             guard let self else { return }
-            Task { await self.stopIsolated() }
+            // Only tear down the session this stream belongs to — a stream
+            // finished by `stop()` must not stop a newer session.
+            Task { await self.stopIfCurrent(session: ownSession) }
         }
-        performInitialScan()
-        watchDirectories()
+        // Keep the root observable even if the initial enumeration fails.
+        // A later write can then invalidate the failed scan instead of leaving
+        // this watcher permanently silent.
+        replaceDirectorySources(with: [root])
+        requestScan()
+    }
+
+    private func stopIfCurrent(session ownSession: Int) {
+        guard started, session == ownSession else { return }
+        stopIsolated()
     }
 
     private func stopIsolated() {
@@ -64,6 +126,18 @@ private actor WatcherEngine {
         directorySources.removeAll()
         debounceTask?.cancel()
         debounceTask = nil
+        scanTask?.cancel()
+        scanTask = nil
+        session &+= 1
+        for (_, waiter) in refreshWaiters {
+            waiter.resume(throwing: CancellationError())
+        }
+        refreshWaiters.removeAll()
+        scanRequested = false
+        forceEmissionRequested = false
+        hasPublishedInitialSnapshot = false
+        initialRetryCount = 0
+        snapshot = [:]
         continuation?.finish()
         continuation = nil
         // Without this, a `changes()` call after `stop()` would see `started`
@@ -73,19 +147,80 @@ private actor WatcherEngine {
 
     // MARK: - Scanning
 
-    private func performInitialScan() {
-        let current = scanFiles()
-        let changes = LibrarySnapshotDiff.changes(from: [:], to: current, resolveURL: url(for:))
-        snapshot = current
-        continuation?.yield(changes)
+    func refresh() async throws {
+        guard started else { throw CocoaError(.fileReadUnknown) }
+        let id = UUID()
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
+                guard !Task.isCancelled else {
+                    continuation.resume(throwing: CancellationError())
+                    return
+                }
+                refreshWaiters[id] = continuation
+                requestScan(forceEmission: true)
+            }
+        } onCancel: {
+            Task { await self.cancelRefresh(id: id) }
+        }
     }
 
-    private func rescanAndDiff() {
-        let current = scanFiles()
-        let changes = LibrarySnapshotDiff.changes(from: snapshot, to: current, resolveURL: url(for:))
-        snapshot = current
-        if !changes.isEmpty {
-            continuation?.yield(changes)
+    private func requestScan(forceEmission: Bool = false) {
+        guard started else { return }
+        scanRequested = true
+        forceEmissionRequested = forceEmissionRequested || forceEmission
+        guard scanTask == nil else { return }
+        let currentSession = session
+        scanTask = Task { [weak self] in
+            await self?.runScans(session: currentSession)
+        }
+    }
+
+    private func runScans(session taskSession: Int) async {
+        while scanRequested, !Task.isCancelled {
+            scanRequested = false
+            do {
+                let result = try await LibraryDiskScanner.scan(root: root, cloudAware: false)
+                guard !Task.isCancelled, started else { break }
+                if scanRequested { continue }
+
+                let old = hasPublishedInitialSnapshot ? snapshot : [:]
+                let changes = LibrarySnapshotDiff.changes(
+                    from: old, to: result.files, resolveURL: url(for:)
+                )
+                snapshot = result.files
+                let isInitial = !hasPublishedInitialSnapshot
+                hasPublishedInitialSnapshot = true
+                initialRetryCount = 0
+                if isInitial || forceEmissionRequested || !changes.isEmpty {
+                    continuation?.yield(changes)
+                }
+                forceEmissionRequested = false
+                replaceDirectorySources(with: result.directories)
+                completeRefreshes(with: .success(()))
+            } catch is CancellationError {
+                break
+            } catch {
+                guard !scanRequested else { continue }
+                if !hasPublishedInitialSnapshot, initialRetryCount < 3 {
+                    initialRetryCount += 1
+                    do {
+                        try await Task.sleep(for: .milliseconds(250 * initialRetryCount))
+                    } catch {
+                        break
+                    }
+                    guard started, !Task.isCancelled else { break }
+                    scanRequested = true
+                    continue
+                }
+                forceEmissionRequested = false
+                completeRefreshes(with: .failure(error))
+            }
+        }
+
+        guard taskSession == session else { return }
+        scanTask = nil
+        if scanRequested, started {
+            requestScan()
         }
     }
 
@@ -93,53 +228,9 @@ private actor WatcherEngine {
         root.appendingPathComponent(path)
     }
 
-    private func scanFiles() -> [String: LibraryFileStat] {
-        var result: [String: LibraryFileStat] = [:]
-        guard let enumerator = fileManager.enumerator(
-            at: root,
-            includingPropertiesForKeys: [.isDirectoryKey, .fileSizeKey, .contentModificationDateKey],
-            options: [.skipsHiddenFiles]
-        ) else { return result }
-
-        for case let url as URL in enumerator {
-            guard let values = try? url.resourceValues(
-                forKeys: [.isDirectoryKey, .fileSizeKey, .contentModificationDateKey]
-            ) else { continue }
-            if values.isDirectory == true { continue }
-            guard url.pathExtension.lowercased() == "mp3" else { continue }
-            // The enumerator only ever yields URLs under `root`, so this
-            // should never actually be nil — but skip rather than crash if
-            // it somehow were.
-            guard let path = LibraryLocation.relativePath(of: url, under: root) else { continue }
-
-            let stat = LibraryFileStat(
-                size: Int64(values.fileSize ?? 0),
-                modified: values.contentModificationDate ?? Date(timeIntervalSince1970: 0),
-                isDownloaded: true
-            )
-            result[path] = stat
-        }
-        return result
-    }
-
-    private func allDirectories() -> [URL] {
-        var directories = [root]
-        guard let enumerator = fileManager.enumerator(
-            at: root, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]
-        ) else { return directories }
-
-        for case let url as URL in enumerator {
-            if (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true {
-                directories.append(url)
-            }
-        }
-        return directories
-    }
-
     // MARK: - Watching
 
-    private func watchDirectories() {
-        let directories = allDirectories()
+    private func replaceDirectorySources(with directories: [URL]) {
         var updated: [URL: DispatchSourceFileSystemObject] = [:]
 
         for directory in directories {
@@ -185,7 +276,18 @@ private actor WatcherEngine {
     }
 
     private func handleDebouncedFire() {
-        rescanAndDiff()
-        watchDirectories()
+        requestScan()
+    }
+
+    private func cancelRefresh(id: UUID) {
+        refreshWaiters.removeValue(forKey: id)?.resume(throwing: CancellationError())
+    }
+
+    private func completeRefreshes(with result: Result<Void, any Error>) {
+        let waiters = refreshWaiters.values
+        refreshWaiters.removeAll()
+        for waiter in waiters {
+            waiter.resume(with: result)
+        }
     }
 }

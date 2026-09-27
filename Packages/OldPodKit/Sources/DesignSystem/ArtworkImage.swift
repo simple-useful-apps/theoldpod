@@ -18,15 +18,23 @@ public struct ArtworkImage: View {
     private let directory: URL?
     private let cornerRadius: CGFloat
     private let pointSize: CGFloat
+    private let placeholderSystemName: String
 
     @Environment(\.displayScale) private var displayScale
     @State private var cgImage: CGImage?
 
-    public init(artworkID: String?, directory: URL?, cornerRadius: CGFloat = 4, pointSize: CGFloat = 44) {
+    public init(
+        artworkID: String?,
+        directory: URL?,
+        cornerRadius: CGFloat = 4,
+        pointSize: CGFloat = 44,
+        placeholderSystemName: String = "music.note"
+    ) {
         self.artworkID = artworkID
         self.directory = directory
         self.cornerRadius = cornerRadius
         self.pointSize = pointSize
+        self.placeholderSystemName = placeholderSystemName
     }
 
     public var body: some View {
@@ -34,9 +42,9 @@ public struct ArtworkImage: View {
             if let cgImage {
                 Image(decorative: cgImage, scale: displayScale)
                     .resizable()
-                    .aspectRatio(contentMode: .fill)
+                    .scaledToFill()
             } else {
-                ArtworkPlaceholder(cornerRadius: cornerRadius)
+                ArtworkPlaceholder(cornerRadius: cornerRadius, systemName: placeholderSystemName)
             }
         }
         .aspectRatio(1, contentMode: .fit)
