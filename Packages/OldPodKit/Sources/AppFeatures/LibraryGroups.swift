@@ -176,9 +176,10 @@ public enum LibraryGroups {
         s.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 
-    /// The key used to order names, ignoring a leading "The " and case.
+    /// The key used to order names, ignoring a leading "The ", case, and
+    /// diacritics — so "Émile" files under E, not after Z.
     private static func articleStrippedKey(_ s: String) -> String {
-        SortKeys.articleStripped(s).lowercased()
+        SortKeys.articleStripped(s).folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
     }
 
     /// The first-seen, display-ready value: trimmed raw text, or `fallback`

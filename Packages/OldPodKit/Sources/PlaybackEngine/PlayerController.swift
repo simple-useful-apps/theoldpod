@@ -759,8 +759,18 @@ public final class PlayerController {
         // is the item actually playing; otherwise just drop the bad preload —
         // if playback reaches that track it will fail again as current and be
         // skipped then.
-        if let current = player.currentItem, ObjectIdentifier(current) == failedItemID {
-            if self.current?.bookID != nil {
+        //
+        // `player.currentItem` can't be used to tell which case this is:
+        // with `actionAtItemEnd == .advance`, AVQueuePlayer discards a failed
+        // item and promotes whatever was preloaded next to `currentItem`
+        // itself, synchronously and before this (asynchronously-dispatched)
+        // handler runs — so by the time we get here, `player.currentItem` may
+        // already be the *next* item even though the failure was ours.
+        // Compare the failed item's own tracked track against the queue's
+        // `current` instead, which isn't affected by the player's own
+        // auto-advance.
+        if itemTracks[failedItemID] == current?.relativePath {
+            if current?.bookID != nil {
                 player.pause()
                 isPlaying = false
                 resumeAfterInterruption = false
@@ -776,6 +786,21 @@ public final class PlayerController {
                 return
             }
             Self.logger.error("Playing item failed; skipping to next track.")
+            guard queue.upNext(repeatMode: repeatMode) != nil else {
+                // No further track to skip to — `next()` would be a no-op
+                // here (it only moves `currentIndex` when there's somewhere
+                // to move it to), which would leave `isPlaying` stuck `true`
+                // over a track that will never play. Stop cleanly instead,
+                // mirroring the equivalent tail case in `handleItemDidEnd`.
+                player.pause()
+                isPlaying = false
+                resumeAfterInterruption = false
+                syncPlayerItems(fullRebuild: true)
+                player.seek(to: .zero)
+                currentTime = 0
+                saveProgress()
+                return
+            }
             next()
         } else {
             Self.logger.error("Preloaded item failed; removing it from the player.")

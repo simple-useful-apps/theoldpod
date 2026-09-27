@@ -12,7 +12,9 @@ import UniformTypeIdentifiers
 /// Play Next / Add to Queue / Add to Playlist; the toolbar button imports
 /// supported audio files into the library folder.
 struct SongsListView: View {
-    @Query(sort: \Track.title) private var tracks: [Track]
+    // `.localizedStandard` (Finder-style: case/diacritic-insensitive), not the
+    // store's default binary order, which filed every lowercase title after Z.
+    @Query(sort: [SortDescriptor(\Track.title, comparator: .localizedStandard)]) private var tracks: [Track]
     @State private var searchText = ""
 
     @State private var isPresentingFileImporter = false

@@ -324,7 +324,7 @@ private struct ArtistsDetailView: View {
                 coordinator: coordinator,
                 filter: filter(artists: artists),
                 initialSortOrder: [
-                    KeyPathComparator(\.album, order: .forward),
+                    KeyPathComparator(\.albumSortKey, order: .forward),
                     KeyPathComparator(\.discNumber, order: .forward),
                     KeyPathComparator(\.trackNumber, order: .forward),
                 ]
@@ -410,7 +410,10 @@ private struct AlbumsDetailView: View {
             SongsTableView(
                 coordinator: coordinator,
                 filter: filter(albums: albums),
+                // Album first: with no album selected, disc/track alone
+                // interleaved every album's track 1s, then its 2s, ...
                 initialSortOrder: [
+                    KeyPathComparator(\.albumSortKey, order: .forward),
                     KeyPathComparator(\.discNumber, order: .forward),
                     KeyPathComparator(\.trackNumber, order: .forward),
                 ]

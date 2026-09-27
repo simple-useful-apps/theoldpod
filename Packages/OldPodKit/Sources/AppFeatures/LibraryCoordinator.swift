@@ -123,6 +123,8 @@ public final class LibraryCoordinator {
                         libraryRoot: root
                     )
                 } catch {
+                    Logger(subsystem: "OldPodKit.AppFeatures", category: "LibraryCoordinator")
+                        .fault("Acceptance library setup failed at \(path, privacy: .public): \(error)")
                     return nil
                 }
             }

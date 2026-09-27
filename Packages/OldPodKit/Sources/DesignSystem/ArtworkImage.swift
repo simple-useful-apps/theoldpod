@@ -38,20 +38,25 @@ public struct ArtworkImage: View {
     }
 
     public var body: some View {
-        Group {
-            if let cgImage {
-                Image(decorative: cgImage, scale: displayScale)
-                    .resizable()
-                    .scaledToFill()
-            } else {
-                ArtworkPlaceholder(cornerRadius: cornerRadius, systemName: placeholderSystemName)
+        // A square clear base sized by the parent, with the image overlaid:
+        // a `.scaledToFill()` image laid out directly would report its own
+        // (non-square) filled size, so wide or tall artwork spilled past the
+        // square slot into neighbouring text.
+        Color.clear
+            .aspectRatio(1, contentMode: .fit)
+            .overlay {
+                if let cgImage {
+                    Image(decorative: cgImage, scale: displayScale)
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    ArtworkPlaceholder(cornerRadius: cornerRadius, systemName: placeholderSystemName)
+                }
             }
-        }
-        .aspectRatio(1, contentMode: .fit)
-        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-        .task(id: LoadKey(url: url, pixelSize: pixelSize)) {
-            cgImage = await ArtworkThumbnailLoader.thumbnail(at: url, maxPixelSize: pixelSize)
-        }
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .task(id: LoadKey(url: url, pixelSize: pixelSize)) {
+                cgImage = await ArtworkThumbnailLoader.thumbnail(at: url, maxPixelSize: pixelSize)
+            }
     }
 
     private var url: URL? {

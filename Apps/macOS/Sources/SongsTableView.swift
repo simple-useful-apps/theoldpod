@@ -19,6 +19,10 @@ struct SongTableRow: Identifiable, Equatable {
     /// Untagged disc/track numbers default the same way `LibraryGroups`
     /// orders albums (disc 1, track sorts last) so the "sorted disc/track by
     /// default" album view reads sensibly even for partially-tagged albums.
+    /// Case-folded `(album, albumArtist ?? artist)` — the same pairing
+    /// `LibraryGroups` uses — so an unfiltered Albums/Artists table keeps each
+    /// album's tracks together, even when two artists share an album title.
+    let albumSortKey: String
     let discNumber: Int
     let trackNumber: Int
     let artworkID: String?
@@ -32,6 +36,9 @@ struct SongTableRow: Identifiable, Equatable {
         artist = track.artist.isEmpty ? "Unknown Artist" : track.artist
         album = track.album.isEmpty ? "Unknown Album" : track.album
         duration = track.duration
+        albumSortKey = [album, track.albumArtist ?? artist]
+            .map { $0.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil) }
+            .joined(separator: "\u{1F}")
         discNumber = track.discNumber ?? 1
         trackNumber = track.trackNumber ?? Int.max
         artworkID = track.artworkID
@@ -131,7 +138,9 @@ struct SongsTableView: View {
                         .frame(maxWidth: .infinity, alignment: .trailing)
                 }
             }
-            .width(min: 46, ideal: 60, max: 90)
+            // Wide enough for an hour-long "1:10:00" readout even when a narrow
+            // Artists/Albums pane squeezes the table.
+            .width(min: 64, ideal: 72, max: 96)
         }
         .contextMenu(forSelectionType: PersistentIdentifier.self) { ids in
             Button("Play") { play(ids) }
@@ -164,9 +173,9 @@ struct SongsTableView: View {
         var rows = tracks.filter(filter).map(SongTableRow.init(track:))
         if !searchText.isEmpty {
             rows = rows.filter {
-                $0.title.localizedCaseInsensitiveContains(searchText) ||
-                    $0.artist.localizedCaseInsensitiveContains(searchText) ||
-                    $0.album.localizedCaseInsensitiveContains(searchText)
+                $0.title.localizedStandardContains(searchText) ||
+                    $0.artist.localizedStandardContains(searchText) ||
+                    $0.album.localizedStandardContains(searchText)
             }
         }
         rows.sort(using: sortOrder)
