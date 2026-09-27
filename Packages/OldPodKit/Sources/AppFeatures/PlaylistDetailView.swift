@@ -73,9 +73,13 @@ struct PlaylistDetailView: View {
 
     private func header(_ resolved: ResolvedPlaylist) -> some View {
         VStack(spacing: 12) {
-            Text(LibraryText.summary(songs: resolved.tracks.count, duration: resolved.totalDuration))
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Text(LibraryText.playlistSummary(
+                songs: resolved.tracks.count,
+                missing: resolved.rows.count - resolved.tracks.count,
+                duration: resolved.totalDuration
+            ))
+            .font(.caption)
+            .foregroundStyle(.secondary)
 
             PlayShuffleButtons(
                 isEnabled: !resolved.tracks.isEmpty,

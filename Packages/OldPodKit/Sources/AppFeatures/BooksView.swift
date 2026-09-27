@@ -35,17 +35,24 @@ public struct BooksView: View {
                 }
             } else {
                 List(filtered, id: \.self) { name in
+                    let chapters = BookChapters.sorted(chaptersByBook[name] ?? [])
                     NavigationLink {
                         BookDetailView(name: name, coordinator: coordinator)
                     } label: {
                         HStack(spacing: 12) {
-                            Image(systemName: "book.closed")
-                                .font(.title2).frame(width: 40, height: 48)
-                                .foregroundStyle(.secondary)
-                            VStack(alignment: .leading, spacing: 4) {
+                            ArtworkImage(
+                                artworkID: chapters.lazy.compactMap(\.artworkID).first,
+                                directory: coordinator.artworkDirectory,
+                                pointSize: 48,
+                                placeholderSystemName: "book.closed"
+                            )
+                            .frame(width: 48, height: 48)
+                            VStack(alignment: .leading, spacing: 2) {
                                 Text(name)
-                                Text(bookSummary(chaptersByBook[name] ?? []))
+                                    .lineLimit(2)
+                                Text(bookSummary(chapters))
                                     .font(.caption).foregroundStyle(.secondary)
+                                    .lineLimit(1)
                             }
                         }
                     }
@@ -98,10 +105,34 @@ public struct BooksView: View {
         .libraryDeletionConfirmation(request: $deletionRequest, coordinator: coordinator)
     }
 
+    /// "Author · N chapters · h:mm:ss" — author and duration only when known.
     private func bookSummary(_ chapters: [Track]) -> String {
-        let count = "\(chapters.count) chapter\(chapters.count == 1 ? "" : "s")"
-        guard chapters.allSatisfy({ $0.duration > 0 }) else { return count }
-        return "\(count) · \(DurationText.format(chapters.reduce(0) { $0 + $1.duration }))"
+        var parts: [String] = []
+        if let author = BookChapters.author(of: chapters) { parts.append(author) }
+        parts.append(LibraryText.chapterCount(chapters.count))
+        if let total = BookChapters.totalDuration(of: chapters) { parts.append(DurationText.format(total)) }
+        return parts.joined(separator: " · ")
+    }
+}
+
+/// Shared chapter ordering and summaries for the book list and book page.
+private enum BookChapters {
+    /// Chapters sort by filename, not tag: untagged downloads still read in order.
+    static func sorted(_ chapters: [Track]) -> [Track] {
+        chapters.sorted { $0.relativePath.localizedStandardCompare($1.relativePath) == .orderedAscending }
+    }
+
+    /// The first non-empty track artist among the chapters, if any.
+    static func author(of chapters: [Track]) -> String? {
+        chapters.lazy
+            .map { $0.artist.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty }
+    }
+
+    /// The book's length, or nil while any chapter's duration is unknown.
+    static func totalDuration(of chapters: [Track]) -> TimeInterval? {
+        guard !chapters.isEmpty, chapters.allSatisfy({ $0.duration > 0 }) else { return nil }
+        return chapters.reduce(0) { $0 + $1.duration }
     }
 }
 
@@ -113,15 +144,24 @@ private struct BookDetailView: View {
     @State private var deletionRequest: LibraryDeletionRequest?
 
     private var chapters: [Track] {
-        // Chapters sort by filename, not tag: untagged downloads still read in order.
-        tracks.filter { $0.bookID == name }.sorted {
-            $0.relativePath.localizedStandardCompare($1.relativePath) == .orderedAscending
+        BookChapters.sorted(tracks.filter { $0.bookID == name })
+    }
+
+    /// Where the listener is in this book: live from the player while one of
+    /// its chapters is loaded, otherwise the saved bookmark.
+    private func position(in chapters: [Track]) -> (path: String, seconds: Double, finished: Bool)? {
+        if let current = coordinator.player.current?.relativePath,
+           chapters.contains(where: { $0.relativePath == current })
+        {
+            return (current, coordinator.player.currentTime, false)
         }
+        return coordinator.player.bookProgress(name)
     }
 
     var body: some View {
         let chapters = chapters
-        let progress = coordinator.player.bookProgress(name)
+        let progress = position(in: chapters)
+        let playingPath = coordinator.player.current?.relativePath
         List {
             Section {
                 if let state = coordinator.books.states[name] {
@@ -146,20 +186,22 @@ private struct BookDetailView: View {
                 Button {
                     coordinator.player.resumeBook(coordinator.playableTracks(from: chapters))
                 } label: {
-                    HStack {
-                        Text(progress?.finished == true ? "Listen Again" : (progress == nil ? "Listen" : "Resume"))
-                        Spacer()
-                    }
-                    .contentShape(Rectangle())
+                    Label(
+                        progress?.finished == true ? "Listen Again" : (progress == nil ? "Listen" : "Resume"),
+                        systemImage: "play.fill"
+                    )
+                    .labelStyle(.titleAndIcon)
+                    #if os(iOS)
+                        .frame(maxWidth: .infinity)
+                    #endif
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.borderedProminent)
+                .listRowSeparator(.hidden)
+                .accessibilityIdentifier("bookListenButton")
                 .disabled(chapters.isEmpty)
-                if let progress, !progress.finished,
-                   let chapter = chapters.first(where: { $0.relativePath == progress.path })
-                {
-                    Text("\(chapter.title) · \(DurationText.format(progress.seconds))")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
+                // Always present, so starting the book doesn't push the
+                // chapter list down under the listener's next tap.
+                BookProgressSummary(chapters: chapters, progress: progress)
                 if coordinator.player.progressSaveFailed {
                     Text("Listening progress couldn't be saved. Check available storage.")
                         .font(.caption).foregroundStyle(.secondary)
@@ -173,8 +215,22 @@ private struct BookDetailView: View {
                     Button {
                         coordinator.play(chapters, startingAt: index)
                     } label: {
-                        HStack {
-                            Text(chapter.title).foregroundStyle(.primary)
+                        HStack(spacing: 12) {
+                            Group {
+                                if chapter.relativePath == playingPath {
+                                    Image(systemName: "speaker.wave.2.fill")
+                                        .foregroundStyle(.tint)
+                                        .accessibilityLabel("Now Playing")
+                                } else {
+                                    Text("\(index + 1)")
+                                        .font(OldPodTypography.timeReadout())
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .frame(width: 24, alignment: .trailing)
+                            Text(chapter.title)
+                                .foregroundStyle(.primary)
+                                .lineLimit(2)
                             Spacer()
                             if chapter.duration > 0 {
                                 DurationText(chapter.duration).foregroundStyle(.secondary)
@@ -214,5 +270,57 @@ private struct BookDetailView: View {
                 dismiss()
             }
         }
+    }
+}
+
+/// The book page's position line: a progress bar across the whole book and
+/// "Chapter · 0:16 of 15:00" beside the book's length. Always the same
+/// height, including before the first listen ("Not started").
+private struct BookProgressSummary: View {
+    let chapters: [Track]
+    let progress: (path: String, seconds: Double, finished: Bool)?
+
+    var body: some View {
+        let total = BookChapters.totalDuration(of: chapters)
+        VStack(alignment: .leading, spacing: 6) {
+            ProgressView(value: fraction(total: total))
+                .accessibilityHidden(true)
+            HStack(alignment: .firstTextBaseline) {
+                Text(statusLine)
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+                if let total {
+                    Text(DurationText.format(total))
+                        .font(OldPodTypography.timeReadout())
+                        .accessibilityLabel("Length \(DurationText.format(total))")
+                }
+            }
+            .font(.caption)
+            .monospacedDigit()
+            .foregroundStyle(.secondary)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private var statusLine: String {
+        guard let progress else { return "Not started" }
+        if progress.finished { return "Finished" }
+        guard let chapter = chapters.first(where: { $0.relativePath == progress.path }) else {
+            return "Not started"
+        }
+        let position = DurationText.format(progress.seconds)
+        guard chapter.duration > 0 else { return "\(chapter.title) · \(position)" }
+        return "\(chapter.title) · \(position) of \(DurationText.format(chapter.duration))"
+    }
+
+    /// How far through the whole book the listener is, 0...1.
+    private func fraction(total: TimeInterval?) -> Double {
+        guard let progress else { return 0 }
+        if progress.finished { return 1 }
+        guard let total, total > 0,
+              let index = chapters.firstIndex(where: { $0.relativePath == progress.path })
+        else { return 0 }
+        let before = chapters[..<index].reduce(0) { $0 + $1.duration }
+        return min(max((before + progress.seconds) / total, 0), 1)
     }
 }

@@ -2,12 +2,16 @@ import Domain
 import SwiftData
 import SwiftUI
 
-/// The Playlists tab: every user-created `Playlist`, oldest first. Tapping a
+/// The Playlists tab: every user-created `Playlist`, alphabetically. Tapping a
 /// row pushes `PlaylistDetailView`. New playlists are created from the
 /// toolbar "+"; existing ones can be renamed or deleted via swipe or
 /// context menu.
 struct PlaylistsListView: View {
-    @Query(sort: \Playlist.createdAt) private var playlists: [Playlist]
+    /// Alphabetical, Finder-style (case/diacritic-insensitive, numbers in
+    /// numeric order), so a playlist is found by name, not by when it was made.
+    @Query(sort: [SortDescriptor(\Playlist.name, comparator: .localizedStandard)]) private var playlists: [Playlist]
+    /// Every track, only to tell which playlist entries' files are missing.
+    @Query private var tracks: [Track]
 
     private let coordinator: LibraryCoordinator
 
@@ -24,6 +28,7 @@ struct PlaylistsListView: View {
 
     var body: some View {
         let filtered = playlists.filter { searchText.isEmpty || $0.name.localizedStandardContains(searchText) }
+        let availablePaths = Set(tracks.map(\.relativePath))
         Group {
             if playlists.isEmpty {
                 ContentUnavailableView(
@@ -37,7 +42,7 @@ struct PlaylistsListView: View {
                         NavigationLink {
                             PlaylistDetailView(playlist: playlist, coordinator: coordinator)
                         } label: {
-                            row(for: playlist)
+                            row(for: playlist, availablePaths: availablePaths)
                         }
                         // Not a destructive-role button: that removes the row
                         // itself on tap, before the confirmation is answered.
@@ -84,11 +89,12 @@ struct PlaylistsListView: View {
         .playlistDeleteConfirmation(for: $playlistPendingDelete, coordinator: coordinator)
     }
 
-    private func row(for playlist: Playlist) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
+    private func row(for playlist: Playlist, availablePaths: Set<String>) -> some View {
+        let playable = playlist.entries.count(where: { availablePaths.contains($0.trackPath) })
+        return VStack(alignment: .leading, spacing: 2) {
             Text(playlist.name)
                 .font(.body)
-            Text(LibraryText.songCount(playlist.entries.count))
+            Text(LibraryText.playlistSongCount(songs: playable, missing: playlist.entries.count - playable))
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

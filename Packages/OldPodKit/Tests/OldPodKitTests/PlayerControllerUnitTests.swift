@@ -111,6 +111,59 @@ struct PlayerControllerUnitTests {
         #expect(controller.current == current)
         controller.stop()
     }
+
+    @Test func jumpToQueueIndexMakesThatTrackCurrentAndPlays() {
+        let controller = PlayerController()
+        let tracks = (0 ..< 4).map { makeTrack(relativePath: "jump-\($0)", duration: 120) }
+        controller.play(tracks)
+        controller.togglePlayPause()
+        #expect(!controller.isPlaying)
+
+        controller.jump(toQueueIndex: 2)
+
+        #expect(controller.current == tracks[2])
+        #expect(controller.queue.currentIndex == 2)
+        #expect(controller.queue.items == tracks)
+        #expect(controller.isPlaying)
+        #expect(controller.currentTime == 0)
+
+        controller.jump(toQueueIndex: 0)
+        #expect(controller.current == tracks[0])
+
+        controller.jump(toQueueIndex: 3)
+        #expect(controller.current == tracks[3])
+        controller.stop()
+    }
+
+    @Test func jumpToQueueIndexIgnoresOutOfRangeAndCurrentIndices() {
+        let controller = PlayerController()
+        let tracks = (0 ..< 3).map { makeTrack(relativePath: "jump-\($0)", duration: 120) }
+        controller.play(tracks, startingAt: 1)
+        controller.seek(to: 30)
+
+        controller.jump(toQueueIndex: 5)
+        controller.jump(toQueueIndex: -1)
+        controller.jump(toQueueIndex: 1)
+
+        #expect(controller.current == tracks[1])
+        #expect(controller.currentTime == 30)
+        controller.stop()
+    }
+
+    @Test func jumpToQueueIndexFollowsShuffledOrder() {
+        let controller = PlayerController()
+        let tracks = (0 ..< 6).map { makeTrack(relativePath: "jump-\($0)", duration: 120) }
+        controller.playShuffled(tracks)
+        let order = controller.queue.items
+        let target = order.count - 1
+
+        controller.jump(toQueueIndex: target)
+
+        #expect(controller.current == order[target])
+        #expect(controller.queue.items == order)
+        #expect(controller.isShuffled)
+        controller.stop()
+    }
 }
 
 // MARK: - Test helpers

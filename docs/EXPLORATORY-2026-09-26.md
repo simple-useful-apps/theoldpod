@@ -34,7 +34,10 @@ Added after the Mac click-and-keyboard pass:
 
 ## Usability suggestions to go over
 
-Rough priority order. None of these are implemented.
+Rough priority order. All except #2 were implemented on September 27 at
+Matt's request (#9 as "list track artists too": compilation artists appear
+under their own names as well as under Various Artists). #2 (hiding junk
+files) remains open.
 
 ### Playback
 

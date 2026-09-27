@@ -1,4 +1,5 @@
 import AppFeatures
+import AppKit
 import DesignSystem
 import Domain
 import Foundation
@@ -25,6 +26,10 @@ struct SongTableRow: Identifiable, Equatable {
     let albumSortKey: String
     let discNumber: Int
     let trackNumber: Int
+    /// The "#" column: disc, then track (untagged tracks last within a disc).
+    let discTrack: DiscTrack
+    /// The tagged track number for display; `nil` shows a blank "#" cell.
+    let trackTag: Int?
     let artworkID: String?
     let relativePath: String
     let isDownloaded: Bool
@@ -41,9 +46,35 @@ struct SongTableRow: Identifiable, Equatable {
             .joined(separator: "\u{1F}")
         discNumber = track.discNumber ?? 1
         trackNumber = track.trackNumber ?? Int.max
+        discTrack = DiscTrack(disc: discNumber, track: trackNumber)
+        trackTag = track.trackNumber
         artworkID = track.artworkID
         relativePath = track.relativePath
         isDownloaded = track.isDownloaded
+    }
+}
+
+/// Sort key for the "#" column: disc first, then track.
+struct DiscTrack: Comparable {
+    let disc: Int
+    let track: Int
+
+    static func < (lhs: Self, rhs: Self) -> Bool {
+        (lhs.disc, lhs.track) < (rhs.disc, rhs.track)
+    }
+}
+
+/// Published by the focused song table so Play (menu, Space, player bar) can
+/// start something when nothing is queued: the selected rows in visible
+/// order, or the whole visible list when nothing is selected.
+struct PlaySelectionActionKey: FocusedValueKey {
+    typealias Value = @MainActor () -> Void
+}
+
+extension FocusedValues {
+    var playSelectionAction: PlaySelectionActionKey.Value? {
+        get { self[PlaySelectionActionKey.self] }
+        set { self[PlaySelectionActionKey.self] = newValue }
     }
 }
 
@@ -53,11 +84,14 @@ struct SongTableRow: Identifiable, Equatable {
 /// Artists, and Albums sidebar destinations in `MacRootView`.
 struct SongsTableView: View {
     @Query(sort: [SortDescriptor(\Track.title)]) private var tracks: [Track]
-    @Query(sort: \Playlist.createdAt) private var playlists: [Playlist]
+    @Query(sort: [SortDescriptor(\Playlist.name, comparator: .localizedStandard)]) private var playlists: [Playlist]
     @Environment(\.modelContext) private var modelContext
 
     private let coordinator: LibraryCoordinator
     private let filter: (Track) -> Bool
+    /// Only the Songs sidebar destination answers Go to Current Song.
+    private let revealsCurrentSong: Bool
+    @Environment(MacWindowActions.self) private var windowActions: MacWindowActions?
 
     @State private var sortOrder: [KeyPathComparator<SongTableRow>]
     @State private var searchText = ""
@@ -65,6 +99,7 @@ struct SongsTableView: View {
     @State private var deletionRequest: LibraryDeletionRequest?
     @State private var pendingDeletionIDs: [String: PersistentIdentifier] = [:]
     @State private var metadataEditor: MetadataEditorPresentation?
+    @State private var scrollTarget: PersistentIdentifier?
 
     /// Album, then disc, then track: with no album selected, disc/track alone
     /// would interleave every album's track 1s, then its 2s, and so on.
@@ -77,9 +112,11 @@ struct SongsTableView: View {
     init(
         coordinator: LibraryCoordinator,
         filter: @escaping (Track) -> Bool = { _ in true },
-        initialSortOrder: [KeyPathComparator<SongTableRow>] = [KeyPathComparator(\.title, order: .forward)]
+        initialSortOrder: [KeyPathComparator<SongTableRow>] = [KeyPathComparator(\.title, order: .forward)],
+        revealsCurrentSong: Bool = false
     ) {
         self.coordinator = coordinator
+        self.revealsCurrentSong = revealsCurrentSong
         self.filter = { !$0.isAudiobook && filter($0) }
         _sortOrder = State(initialValue: initialSortOrder)
     }
@@ -96,7 +133,27 @@ struct SongsTableView: View {
             } else if rows.isEmpty {
                 ContentUnavailableView.search(text: searchText)
             } else {
-                table(for: rows)
+                VStack(spacing: 0) {
+                    ScrollViewReader { proxy in
+                        table(for: rows)
+                            .onChange(of: scrollTarget) { _, target in
+                                guard let target else { return }
+                                // After the search clear has re-rendered rows.
+                                Task { @MainActor in
+                                    proxy.scrollTo(target, anchor: .center)
+                                    scrollTarget = nil
+                                }
+                            }
+                    }
+                    Divider()
+                    Text(Self.statusLine(for: rows))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 4)
+                        .accessibilityIdentifier("songsStatusLine")
+                }
             }
         }
         .searchable(text: $searchText, prompt: "Search")
@@ -104,8 +161,14 @@ struct SongsTableView: View {
             requestDeletion(for: selection)
         }
         .focusedSceneValue(\.getInfoAction, getInfoAction(rows: rows))
+        .focusedSceneValue(\.playSelectionAction, playSelectionAction(rows: rows))
+        .onChange(of: windowActions?.isRevealingCurrentSong ?? false, initial: true) { _, isRevealing in
+            guard revealsCurrentSong, isRevealing else { return }
+            windowActions?.isRevealingCurrentSong = false
+            revealCurrentSong()
+        }
         .sheet(item: $metadataEditor) { request in
-            MetadataEditorView(relativePath: request.relativePath, coordinator: coordinator)
+            MetadataEditorView(request: request, coordinator: coordinator)
         }
         .libraryDeletionConfirmation(
             request: $deletionRequest,
@@ -119,6 +182,13 @@ struct SongsTableView: View {
 
     private func table(for rows: [SongTableRow]) -> some View {
         Table(rows, selection: $selection, sortOrder: $sortOrder) {
+            TableColumn("#", value: \.discTrack) { row in
+                Text(row.trackTag.map(String.init) ?? "")
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+            .width(min: 24, ideal: 30, max: 44)
             TableColumn("Title", value: \.title) { row in
                 HStack(spacing: 6) {
                     Image(systemName: "speaker.wave.2.fill")
@@ -166,6 +236,8 @@ struct SongsTableView: View {
             Divider()
             Button("Get Info") { openInfo(for: ids) }
                 .disabled(editableTrack(for: ids) == nil)
+            Button("Show in Finder") { showInFinder(ids) }
+                .disabled(ids.isEmpty)
             Divider()
             Button("Delete", role: .destructive) { requestDeletion(for: ids) }
         } primaryAction: { ids in
@@ -234,6 +306,52 @@ struct SongsTableView: View {
         addToPlaylist(playlist, ids: ids)
     }
 
+    /// "40 songs, 3.1 hours" (or "12 minutes", or "1.5 days") for the rows
+    /// currently visible — the old iTunes status line.
+    static func statusLine(for rows: [SongTableRow]) -> String {
+        let total = rows.reduce(0) { $0 + max($1.duration, 0) }
+        let duration: String
+        if total < 3600 {
+            let minutes = Int((total / 60).rounded())
+            duration = minutes == 1 ? "1 minute" : "\(minutes) minutes"
+        } else if total < 86400 {
+            duration = String(format: "%.1f hours", total / 3600)
+        } else {
+            duration = String(format: "%.1f days", total / 86400)
+        }
+        return "\(LibraryText.songCount(rows.count)), \(duration)"
+    }
+
+    /// Play with nothing queued: the selection in visible order, else the
+    /// whole visible list from the top.
+    private func playSelectionAction(rows: [SongTableRow]) -> (@MainActor () -> Void)? {
+        guard !rows.isEmpty else { return nil }
+        let selected = rows.map(\.id).filter(selection.contains)
+        let ids = selected.isEmpty ? rows.map(\.id) : selected
+        return {
+            let tracks = LibraryGroups.tracks(for: ids, in: modelContext)
+            guard !tracks.isEmpty else { return }
+            coordinator.play(tracks, startingAt: 0)
+        }
+    }
+
+    /// Go to Current Song: clear the search so the row is visible, then
+    /// select it and scroll it into view.
+    private func revealCurrentSong() {
+        guard let path = coordinator.player.current?.relativePath,
+              let track = tracks.first(where: { $0.relativePath == path && filter($0) })
+        else { return }
+        searchText = ""
+        selection = [track.persistentModelID]
+        scrollTarget = track.persistentModelID
+    }
+
+    private func showInFinder(_ ids: Set<PersistentIdentifier>) {
+        let urls = orderedTracks(matching: ids).map { coordinator.libraryRoot.appendingPathComponent($0.relativePath) }
+        guard !urls.isEmpty else { return }
+        NSWorkspace.shared.activateFileViewerSelecting(urls)
+    }
+
     private func getInfoAction(rows: [SongTableRow]) -> (@MainActor () -> Void)? {
         guard selection.count == 1, let row = rows.first(where: { selection.contains($0.id) }), row.isDownloaded else { return nil }
         return { openInfo(for: selection) }
@@ -246,7 +364,11 @@ struct SongsTableView: View {
 
     private func openInfo(for ids: Set<PersistentIdentifier>) {
         guard let track = editableTrack(for: ids) else { return }
-        metadataEditor = MetadataEditorPresentation(relativePath: track.relativePath)
+        metadataEditor = MetadataEditorPresentation(
+            relativePath: track.relativePath,
+            artworkID: track.artworkID,
+            duration: track.duration
+        )
     }
 
     private func requestDeletion(for ids: Set<PersistentIdentifier>) {

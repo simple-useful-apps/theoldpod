@@ -38,7 +38,8 @@ public struct MiniPlayerBar: View {
                             .lineLimit(1)
                             .truncationMode(.tail)
                             .accessibilityIdentifier("miniPlayerTitle")
-                        Text(isBook ? current.album : current.displayArtist)
+                        // A skipped, unplayable file briefly replaces the artist.
+                        Text(player.unplayableNotice ?? (isBook ? current.album : current.displayArtist))
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)

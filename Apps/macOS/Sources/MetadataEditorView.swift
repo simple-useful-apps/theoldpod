@@ -1,9 +1,14 @@
 import AppFeatures
+import AVFoundation
 import CloudFiles
+import DesignSystem
 import SwiftUI
 
 struct MetadataEditorPresentation: Identifiable {
     let relativePath: String
+    let artworkID: String?
+    /// The indexed duration (read once at import).
+    let duration: TimeInterval
 
     var id: String {
         relativePath
@@ -22,11 +27,20 @@ extension FocusedValues {
 }
 
 /// A deliberately compact, native Mac sheet: the eight ordinary music tags
-/// people most often changed in classic iTunes, without turning this into a
+/// people most often changed in classic iTunes (plus track/disc totals), the
+/// artwork, and a few read-only file facts — without turning this into a
 /// full tag-inspection utility.
 struct MetadataEditorView: View {
-    let relativePath: String
+    let request: MetadataEditorPresentation
     let coordinator: LibraryCoordinator
+
+    private var relativePath: String {
+        request.relativePath
+    }
+
+    private var fileURL: URL {
+        coordinator.libraryRoot.appendingPathComponent(relativePath)
+    }
 
     @Environment(\.dismiss) private var dismiss
     @State private var title = ""
@@ -36,9 +50,10 @@ struct MetadataEditorView: View {
     @State private var genre = ""
     @State private var year = ""
     @State private var trackNumber = ""
-    @State private var trackTotal: Int?
+    @State private var trackTotal = ""
     @State private var discNumber = ""
-    @State private var discTotal: Int?
+    @State private var discTotal = ""
+    @State private var details: AudioFileDetails?
     @State private var isLoading = true
     @State private var isSaving = false
     @State private var didLoad = false
@@ -47,15 +62,24 @@ struct MetadataEditorView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Song Info")
-                    .font(.title2)
-                    .fontWeight(.semibold)
-                Text((relativePath as NSString).lastPathComponent)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .help(relativePath)
+            HStack(alignment: .center, spacing: 12) {
+                ArtworkImage(
+                    artworkID: request.artworkID,
+                    directory: coordinator.artworkDirectory,
+                    cornerRadius: 8,
+                    pointSize: 72
+                )
+                .frame(width: 72, height: 72)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Song Info")
+                        .font(.title2)
+                        .fontWeight(.semibold)
+                    Text((relativePath as NSString).lastPathComponent)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .help(relativePath)
+                }
             }
 
             if isLoading {
@@ -76,15 +100,17 @@ struct MetadataEditorView: View {
                             .frame(width: 90)
                         Text("Track")
                             .foregroundStyle(.secondary)
-                        TextField("", text: $trackNumber)
-                            .frame(width: 58)
+                        numberOfTotal(number: $trackNumber, total: $trackTotal, name: "Track")
                         Text("Disc")
                             .foregroundStyle(.secondary)
-                        TextField("", text: $discNumber)
-                            .frame(width: 58)
+                        numberOfTotal(number: $discNumber, total: $discTotal, name: "Disc")
                     }
                 }
                 .textFieldStyle(.roundedBorder)
+
+                Divider()
+
+                detailsGrid
             }
 
             if let errorMessage {
@@ -111,9 +137,64 @@ struct MetadataEditorView: View {
             }
         }
         .padding(20)
-        .frame(width: 520)
+        .frame(width: 560)
         .interactiveDismissDisabled(isSaving)
         .task { await load() }
+    }
+
+    /// "[ 3 ] of [ 12 ]" — the classic iTunes track/disc pair.
+    private func numberOfTotal(number: Binding<String>, total: Binding<String>, name: String) -> some View {
+        HStack(spacing: 4) {
+            TextField("", text: number)
+                .frame(width: 44)
+                .accessibilityLabel(name)
+            Text("of")
+                .foregroundStyle(.secondary)
+            TextField("", text: total)
+                .frame(width: 44)
+                .accessibilityLabel("\(name) Total")
+        }
+    }
+
+    /// Read-only facts about the file itself.
+    private var detailsGrid: some View {
+        Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 6) {
+            detailRow("Kind", details?.kind ?? "\u{2014}")
+            detailRow("Duration", DurationText.format(request.duration), monospaced: true)
+            detailRow("Size", details?.fileSize.map {
+                ByteCountFormatter.string(fromByteCount: $0, countStyle: .file)
+            } ?? "\u{2014}")
+            detailRow("Bit Rate", details?.kilobitsPerSecond.map { "\($0) kbps" } ?? "\u{2014}")
+            GridRow(alignment: .firstTextBaseline) {
+                Text("Location")
+                    .foregroundStyle(.secondary)
+                    .gridColumnAlignment(.trailing)
+                HStack(alignment: .firstTextBaseline) {
+                    Text(fileURL.path)
+                        .lineLimit(2)
+                        .truncationMode(.middle)
+                        .textSelection(.enabled)
+                        .help(fileURL.path)
+                    Spacer(minLength: 8)
+                    Button("Show in Finder") {
+                        FinderReveal.reveal(fileURL)
+                    }
+                    .controlSize(.small)
+                }
+            }
+        }
+        .font(.callout)
+    }
+
+    private func detailRow(_ label: String, _ value: String, monospaced: Bool = false) -> some View {
+        GridRow {
+            Text(label)
+                .foregroundStyle(.secondary)
+                .gridColumnAlignment(.trailing)
+            Text(value)
+                .font(monospaced ? OldPodTypography.timeReadout() : .callout)
+                .textSelection(.enabled)
+        }
     }
 
     private func metadataRow(_ label: String, text: Binding<String>) -> some View {
@@ -142,15 +223,18 @@ struct MetadataEditorView: View {
             genre = fields.genre ?? ""
             year = fields.year.map(String.init) ?? ""
             trackNumber = fields.trackNumber.map(String.init) ?? ""
-            trackTotal = fields.trackTotal
+            trackTotal = fields.trackTotal.map(String.init) ?? ""
             discNumber = fields.discNumber.map(String.init) ?? ""
-            discTotal = fields.discTotal
+            discTotal = fields.discTotal.map(String.init) ?? ""
             versionToken = session.version
             didLoad = true
         } catch {
             errorMessage = error.localizedDescription
         }
         isLoading = false
+        if details == nil {
+            details = await AudioFileDetails.read(url: fileURL, duration: request.duration)
+        }
     }
 
     private func save() {
@@ -158,7 +242,9 @@ struct MetadataEditorView: View {
         guard let versionToken, didLoad else { return }
         guard let year = number(year, named: "year"),
               let trackNumber = number(trackNumber, named: "track number"),
-              let discNumber = number(discNumber, named: "disc number")
+              let trackTotal = number(trackTotal, named: "track total"),
+              let discNumber = number(discNumber, named: "disc number"),
+              let discTotal = number(discTotal, named: "disc total")
         else { return }
 
         let fields = AudioMetadataFields(
@@ -199,5 +285,51 @@ struct MetadataEditorView: View {
             return nil
         }
         return .some(value)
+    }
+}
+
+/// Read-only file facts for Get Info: kind, size, and average bit rate.
+struct AudioFileDetails: Equatable {
+    let kind: String
+    let fileSize: Int64?
+    let kilobitsPerSecond: Int?
+
+    /// Reads the size from the file system and the codec/data rate from the
+    /// first audio track, falling back to size ÷ indexed duration.
+    static func read(url: URL, duration: TimeInterval) async -> AudioFileDetails {
+        let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init)
+        var subtype: FourCharCode?
+        var dataRate: Float?
+        if let track = try? await AVURLAsset(url: url).loadTracks(withMediaType: .audio).first {
+            if let format = try? await track.load(.formatDescriptions).first {
+                subtype = CMFormatDescriptionGetMediaSubType(format)
+            }
+            dataRate = try? await track.load(.estimatedDataRate)
+        }
+        var kbps: Int?
+        if let dataRate, dataRate > 0 {
+            kbps = Int((dataRate / 1000).rounded())
+        } else if let size, duration > 0 {
+            kbps = Int((Double(size) * 8 / duration / 1000).rounded())
+        }
+        return AudioFileDetails(
+            kind: kindDescription(pathExtension: url.pathExtension, subtype: subtype),
+            fileSize: size,
+            kilobitsPerSecond: kbps
+        )
+    }
+
+    static func kindDescription(pathExtension: String, subtype: FourCharCode?) -> String {
+        switch subtype {
+        case kAudioFormatMPEGLayer3: "MP3 audio file"
+        case kAudioFormatMPEG4AAC, kAudioFormatMPEG4AAC_HE, kAudioFormatMPEG4AAC_HE_V2: "AAC audio file"
+        case kAudioFormatAppleLossless: "Apple Lossless audio file"
+        default:
+            switch pathExtension.lowercased() {
+            case "mp3": "MP3 audio file"
+            case "m4a": "AAC audio file"
+            default: "Audio file"
+            }
+        }
     }
 }

@@ -15,18 +15,19 @@ import UniformTypeIdentifiers
 /// through `ImportService`.
 struct MacRootView: View {
     private let coordinator: LibraryCoordinator
+    @Bindable private var windowActions: MacWindowActions
 
-    @Query(sort: \Playlist.createdAt) private var playlists: [Playlist]
+    @Query(sort: [SortDescriptor(\Playlist.name, comparator: .localizedStandard)]) private var playlists: [Playlist]
 
     @State private var selection: SidebarItem? = .songs
     @State private var playlistSearch = ""
 
     @State private var rename: PlaylistRename?
     @State private var playlistPendingDelete: Playlist?
-    @State private var isImporterPresented = false
 
-    init(coordinator: LibraryCoordinator) {
+    init(coordinator: LibraryCoordinator, windowActions: MacWindowActions) {
         self.coordinator = coordinator
+        self.windowActions = windowActions
     }
 
     var body: some View {
@@ -62,7 +63,7 @@ struct MacRootView: View {
             ToolbarItem(placement: .automatic) {
                 if selection != .books {
                     Button {
-                        isImporterPresented = true
+                        windowActions.isImporterPresented = true
                     } label: {
                         Label("Add Music", systemImage: "plus")
                     }
@@ -71,7 +72,7 @@ struct MacRootView: View {
             }
         }
         .fileImporter(
-            isPresented: $isImporterPresented,
+            isPresented: $windowActions.isImporterPresented,
             allowedContentTypes: ImportService.supportedContentTypes,
             allowsMultipleSelection: true
         ) { result in
@@ -83,6 +84,13 @@ struct MacRootView: View {
             coordinator.importer.importFiles(at: urls)
         }
         .importReportAlert(coordinator.importer)
+        .environment(windowActions)
+        .onChange(of: windowActions.isRevealingCurrentSong) { _, isRevealing in
+            // The Songs table (re)appears and consumes the request.
+            if isRevealing, selection != .songs {
+                selection = .songs
+            }
+        }
         .task {
             coordinator.start()
             SpacebarPlayPause.install(player: coordinator.player)
@@ -148,7 +156,7 @@ struct MacRootView: View {
     private var detail: some View {
         switch selection {
         case .songs, nil:
-            SongsTableView(coordinator: coordinator)
+            SongsTableView(coordinator: coordinator, revealsCurrentSong: true)
                 .navigationTitle("Songs")
         case .artists:
             ArtistsDetailView(coordinator: coordinator)

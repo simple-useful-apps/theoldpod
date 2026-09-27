@@ -11,6 +11,9 @@ import SwiftUI
 struct PlayerBarView: View {
     let player: PlayerController
     let artworkDirectory: URL?
+    /// Published by the focused song table: plays its selection (or the
+    /// visible list) when nothing is loaded yet.
+    @FocusedValue(\.playSelectionAction) private var playSelectionAction
 
     var body: some View {
         VStack(spacing: 0) {
@@ -48,15 +51,21 @@ struct PlayerBarView: View {
                 Image(systemName: "backward.fill")
             }
             .accessibilityLabel("Previous Track")
+            .disabled(player.current == nil)
 
             Button {
-                player.togglePlayPause()
+                if player.current == nil, let playSelectionAction {
+                    playSelectionAction()
+                } else {
+                    player.togglePlayPause()
+                }
             } label: {
                 PlayPauseSymbol(isPlaying: player.isPlaying)
                     .font(.system(size: 28))
                     .frame(width: 28)
             }
             .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
+            .disabled(player.current == nil && playSelectionAction == nil)
 
             Button {
                 player.next()
@@ -64,10 +73,10 @@ struct PlayerBarView: View {
                 Image(systemName: "forward.fill")
             }
             .accessibilityLabel("Next Track")
+            .disabled(player.current == nil)
         }
         .buttonStyle(.borderless)
         .imageScale(.large)
-        .disabled(player.current == nil)
     }
 
     @ViewBuilder
@@ -92,7 +101,8 @@ struct PlayerBarView: View {
                         .font(.callout)
                         .lineLimit(1)
                         .accessibilityIdentifier("playerBarTitle")
-                    Text(current.subtitle)
+                    // A skipped, unplayable file briefly replaces the subtitle.
+                    Text(player.unplayableNotice ?? current.subtitle)
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)

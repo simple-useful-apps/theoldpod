@@ -23,4 +23,21 @@ public enum LibraryText {
     public static func summary(songs: Int, duration: TimeInterval) -> String {
         "\(songCount(songs)) · \(DurationText.format(duration))"
     }
+
+    /// A playlist's count: "N songs", or "N songs, M missing" when some
+    /// entries' files are gone. `songs` counts only playable entries.
+    public static func playlistSongCount(songs: Int, missing: Int) -> String {
+        missing > 0 ? "\(songCount(songs)), \(missing) missing" : songCount(songs)
+    }
+
+    /// "N songs, M missing · m:ss" — `playlistSongCount` plus the playable
+    /// entries' total duration.
+    public static func playlistSummary(songs: Int, missing: Int, duration: TimeInterval) -> String {
+        "\(playlistSongCount(songs: songs, missing: missing)) · \(DurationText.format(duration))"
+    }
+
+    /// "1 chapter" / "N chapters".
+    public static func chapterCount(_ count: Int) -> String {
+        count == 1 ? "1 chapter" : "\(count) chapters"
+    }
 }

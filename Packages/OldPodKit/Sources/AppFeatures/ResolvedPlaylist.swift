@@ -100,7 +100,7 @@ public struct PlaylistEntryRow: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(track.title)
                         .font(.body)
-                        .lineLimit(1)
+                        .lineLimit(2)
                     Text(track.displayArtist)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)

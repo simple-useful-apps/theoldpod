@@ -98,9 +98,19 @@ public final class LibraryCoordinator {
 
     /// Resolves the library location (iCloud when available, else the local
     /// fallback) and builds the coordinator around it. `nil` only if the
-    /// model container or artwork store cannot be set up.
+    /// model container or artwork store cannot be set up; use
+    /// `makeResult()` to learn why.
     @MainActor
     public static func make() async -> LibraryCoordinator? {
+        try? await makeResult().get()
+    }
+
+    /// Like `make()`, but a failure carries a human-readable reason and the
+    /// library folder that was being set up, so the app's setup-failure
+    /// screen can explain itself and offer a retry.
+    @MainActor
+    public static func makeResult() async -> Result<LibraryCoordinator, LibrarySetupError> {
+        let logger = Logger(subsystem: "OldPodKit.AppFeatures", category: "LibraryCoordinator")
         #if DEBUG
             // Acceptance runs use their own files and index, without touching
             // the user's music or iCloud container. The directory must already
@@ -111,16 +121,15 @@ public final class LibraryCoordinator {
                     let container = try LibraryContainerFactory.make(
                         storeURL: root.appendingPathComponent(".index/Library.store")
                     )
-                    return LibraryCoordinator(
+                    return .success(LibraryCoordinator(
                         container: container,
                         watcher: LocalFolderWatcher(root: root),
                         artwork: ArtworkStore(directory: root.appendingPathComponent(".artwork")),
                         libraryRoot: root
-                    )
+                    ))
                 } catch {
-                    Logger(subsystem: "OldPodKit.AppFeatures", category: "LibraryCoordinator")
-                        .fault("Acceptance library setup failed at \(path, privacy: .public): \(error)")
-                    return nil
+                    logger.fault("Acceptance library setup failed at \(path, privacy: .public): \(error)")
+                    return .failure(LibrarySetupError(underlying: error, libraryFolder: root))
                 }
             }
         #endif
@@ -132,18 +141,16 @@ public final class LibraryCoordinator {
             let watcher: any LibraryFolderWatching = resolved.isCloud
                 ? UbiquityLibraryWatcher(containerDocumentsMusicURL: resolved.root)
                 : LocalFolderWatcher(root: resolved.root)
-            return LibraryCoordinator(
+            return .success(LibraryCoordinator(
                 container: container,
                 watcher: watcher,
                 artwork: artwork,
                 libraryRoot: resolved.root,
                 isCloudLibrary: resolved.isCloud
-            )
+            ))
         } catch {
-            // The UI only shows a generic failure screen; the cause lands here.
-            Logger(subsystem: "OldPodKit.AppFeatures", category: "LibraryCoordinator")
-                .fault("Library setup failed: \(error)")
-            return nil
+            logger.fault("Library setup failed: \(error)")
+            return .failure(LibrarySetupError(underlying: error, libraryFolder: resolved.root))
         }
     }
 
@@ -185,7 +192,42 @@ public final class LibraryCoordinator {
     }
 
     public func playableTracks(from tracks: [Track]) -> [PlayableTrack] {
-        tracks.map { PlayableTrack(track: $0, libraryRoot: libraryRoot) }
+        let albumArtwork = tracks.contains { $0.artworkID == nil }
+            ? Self.albumArtworkIndex(container.mainContext)
+            : [:]
+        return tracks.map { Self.playable($0, libraryRoot: libraryRoot, albumArtwork: albumArtwork) }
+    }
+
+    /// Album key → the first embedded artwork found on that album, so tracks
+    /// without their own art show their album's in Now Playing and on the
+    /// lock screen.
+    private static func albumArtworkIndex(_ context: ModelContext) -> [String: String] {
+        let descriptor = FetchDescriptor<Track>(predicate: #Predicate { $0.artworkID != nil })
+        let tracksWithArt = (try? context.fetch(descriptor)) ?? []
+        return albumArtworkIndex(tracksWithArt)
+    }
+
+    private static func albumArtworkIndex(_ tracks: [Track]) -> [String: String] {
+        var index: [String: String] = [:]
+        for track in tracks {
+            guard let artworkID = track.artworkID, let key = albumKey(track) else { continue }
+            if index[key] == nil { index[key] = artworkID }
+        }
+        return index
+    }
+
+    /// Same (album artist, album) pairing `LibraryGroups` uses; untitled
+    /// albums don't share art.
+    private static func albumKey(_ track: Track) -> String? {
+        let album = track.album.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !album.isEmpty else { return nil }
+        let artist = (track.albumArtist ?? track.artist).trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return artist + "\u{1F}" + album
+    }
+
+    private static func playable(_ track: Track, libraryRoot: URL, albumArtwork: [String: String]) -> PlayableTrack {
+        let fallback = track.artworkID == nil ? albumKey(track).flatMap { albumArtwork[$0] } : nil
+        return PlayableTrack(track: track, libraryRoot: libraryRoot, fallbackArtworkID: fallback)
     }
 
     /// Rescans the library folder and waits for the index to catch up.
@@ -331,7 +373,8 @@ public final class LibraryCoordinator {
 
     private static func refreshPlayableTracks(in container: ModelContainer, libraryRoot: URL, player: PlayerController) {
         guard let tracks = try? container.mainContext.fetch(FetchDescriptor<Track>()) else { return }
-        let playable = tracks.map { PlayableTrack(track: $0, libraryRoot: libraryRoot) }
+        let albumArtwork = albumArtworkIndex(tracks)
+        let playable = tracks.map { Self.playable($0, libraryRoot: libraryRoot, albumArtwork: albumArtwork) }
         player.restoreSession(available: playable)
         player.refreshAvailableTracks(playable)
     }
@@ -361,5 +404,24 @@ private extension LibraryDeletionResult {
             postDeletionWarning: "The selected files were moved to Trash. "
                 + "The library check is still pending or didn’t finish. Use Refresh Library if the list doesn’t update."
         )
+    }
+}
+
+/// Why `LibraryCoordinator.makeResult()` could not build the library, for the
+/// app's setup-failure screen.
+public struct LibrarySetupError: Error, Sendable {
+    /// The underlying error's description (Foundation errors already read as
+    /// sentences, e.g. "You don't have permission to save the file…").
+    public let reason: String
+    /// The library folder that was being set up, when it had been resolved.
+    public let libraryFolder: URL?
+
+    public init(reason: String, libraryFolder: URL?) {
+        self.reason = reason
+        self.libraryFolder = libraryFolder
+    }
+
+    init(underlying error: any Error, libraryFolder: URL?) {
+        self.init(reason: error.localizedDescription, libraryFolder: libraryFolder)
     }
 }

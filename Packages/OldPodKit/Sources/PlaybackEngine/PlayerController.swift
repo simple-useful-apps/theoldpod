@@ -20,6 +20,13 @@ public final class PlayerController {
     public private(set) var playbackSpeed: Float = 1
     public static let supportedSpeeds: [Float] = [0.75, 1, 1.25, 1.5, 1.75, 2]
     public private(set) var playbackNotice: String?
+    /// A short-lived "Couldn't play …" caption set when an unplayable file is
+    /// skipped (or playback stops on one). Separate from `playbackNotice`,
+    /// whose book-resume messages persist until the next successful load.
+    /// Clears itself after `unplayableNoticeLifetime`, or as soon as the user
+    /// starts a different track.
+    public private(set) var unplayableNotice: String?
+    public static let unplayableNoticeLifetime: Duration = .seconds(5)
     /// Bumped on every explicit seek, so observers can react to position
     /// discontinuities without observing `currentTime`'s half-second ticks.
     public private(set) var seekCount = 0
@@ -33,6 +40,7 @@ public final class PlayerController {
     private var hasRestored = false
     private var bookFinished = false
     private var resumeAfterInterruption = false
+    @ObservationIgnored private var unplayableNoticeTask: Task<Void, Never>?
 
     public var current: PlayableTrack? {
         queue.current
@@ -126,6 +134,7 @@ public final class PlayerController {
         let target = tracks[tracks.indices.contains(index) ? index : 0]
         guard prepareForPlayback(target) else { return }
         saveProgress()
+        clearUnplayableNotice()
         bookFinished = false
         queue.replace(with: tracks, startingAt: index)
         playbackSpeed = current?.bookID.flatMap { history.bookmark(for: $0)?.speed } ?? 1
@@ -141,6 +150,7 @@ public final class PlayerController {
     public func playShuffled(_ tracks: [PlayableTrack]) {
         guard !tracks.isEmpty else { return }
         saveProgress()
+        clearUnplayableNotice()
         bookFinished = false
         playbackSpeed = 1
         queue.replace(with: tracks, startingAt: Int.random(in: tracks.indices))
@@ -172,6 +182,7 @@ public final class PlayerController {
     public func next() {
         saveProgress()
         guard queue.skipNext(repeatMode: repeatMode) != nil else { return }
+        clearUnplayableNotice()
         bookFinished = false
         syncPlayerItems(fullRebuild: true)
         if isPlaying {
@@ -187,11 +198,35 @@ public final class PlayerController {
         }
         saveProgress()
         guard queue.skipPrevious(repeatMode: repeatMode) != nil else { return }
+        clearUnplayableNotice()
         bookFinished = false
         syncPlayerItems(fullRebuild: true)
         if isPlaying {
             beginPlayback()
         }
+        saveProgress()
+    }
+
+    /// Makes `queue.items[index]` current (the Up Next list's tap target)
+    /// and rebuilds the player around it, as `next()`/`previous()` do.
+    /// Starts playback if the player was paused: choosing a song means
+    /// "play this". Out-of-range indices and the current index are no-ops.
+    public func jump(toQueueIndex index: Int) {
+        guard queue.items.indices.contains(index), let currentIndex = queue.currentIndex,
+              index != currentIndex else { return }
+        saveProgress()
+        // PlayQueue has no direct setter for the current index; single
+        // steps under `.off` never wrap, so they land exactly on `index`.
+        while let position = queue.currentIndex, position != index {
+            let moved = position < index
+                ? queue.skipNext(repeatMode: .off)
+                : queue.skipPrevious(repeatMode: .off)
+            guard moved != nil, queue.currentIndex != position else { break }
+        }
+        clearUnplayableNotice()
+        bookFinished = false
+        syncPlayerItems(fullRebuild: true)
+        beginPlayback()
         saveProgress()
     }
 
@@ -259,6 +294,14 @@ public final class PlayerController {
         let itemTime = player.currentItem?.currentTime().seconds
         let actual = itemTime?.isFinite == true ? itemTime! : currentTime
         seek(to: (pendingSeek?.target ?? actual) + seconds)
+    }
+
+    /// App-level output volume, 0...1 (the system volume is separate).
+    public private(set) var volume: Float = 1
+
+    public func setVolume(_ newValue: Float) {
+        volume = min(max(newValue, 0), 1)
+        player.volume = volume
     }
 
     public func setSpeed(_ speed: Float) {
@@ -689,6 +732,7 @@ public final class PlayerController {
                 return
             }
             Self.logger.error("Playing item failed; skipping to next track.")
+            let failedTitle = current?.title ?? ""
             guard queue.upNext(repeatMode: repeatMode) != nil else {
                 // Nothing to skip to. Park on the track with no player item:
                 // re-arming the same file would fail again, forever.
@@ -696,9 +740,11 @@ public final class PlayerController {
                 clearPlayerItems()
                 resetPosition(duration: current?.duration ?? 0)
                 saveProgress()
+                showUnplayableNotice(title: failedTitle)
                 return
             }
             next()
+            showUnplayableNotice(title: failedTitle)
         } else {
             Self.logger.error("Preloaded item failed; removing it from the player.")
             for tail in player.items().dropFirst() where ObjectIdentifier(tail) == failedItemID {
@@ -707,6 +753,22 @@ public final class PlayerController {
             itemTracks.removeValue(forKey: failedItemID)
             itemStatusObservations.removeValue(forKey: failedItemID)
         }
+    }
+
+    private func showUnplayableNotice(title: String) {
+        unplayableNoticeTask?.cancel()
+        unplayableNotice = title.isEmpty ? "Couldn’t play a file." : "Couldn’t play “\(title)”."
+        unplayableNoticeTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: Self.unplayableNoticeLifetime)
+            guard !Task.isCancelled else { return }
+            self?.unplayableNotice = nil
+        }
+    }
+
+    private func clearUnplayableNotice() {
+        unplayableNoticeTask?.cancel()
+        unplayableNoticeTask = nil
+        unplayableNotice = nil
     }
 
     private func handleExternalPause() {
