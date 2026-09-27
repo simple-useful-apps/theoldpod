@@ -54,15 +54,17 @@ public struct PlayableTrack: Sendable, Equatable, Identifiable {
     /// Snapshots a SwiftData `Track` (main-actor only) into a value that can
     /// safely cross into `PlaybackEngine`/`AVFoundation` code. `libraryRoot`
     /// resolves the track's `relativePath` into a playable file URL.
+    /// `fallbackArtworkID` stands in when the file has no embedded art of
+    /// its own — typically another track's art from the same album.
     @MainActor
-    public init(track: Track, libraryRoot: URL) {
+    public init(track: Track, libraryRoot: URL, fallbackArtworkID: String? = nil) {
         relativePath = track.relativePath
         url = libraryRoot.appendingPathComponent(track.relativePath)
         title = track.title
         artist = track.artist
         album = track.bookID ?? track.album
         duration = track.duration
-        artworkID = track.artworkID
+        artworkID = track.artworkID ?? fallbackArtworkID
         isDownloaded = track.isDownloaded
     }
 }

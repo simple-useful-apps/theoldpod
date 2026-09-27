@@ -67,11 +67,44 @@ public struct ScrubberView: View {
         .disabled(!player.canSeek)
     }
 
+    /// Elapsed never exceeds the duration, so the formatted duration is the
+    /// widest readout this track can produce (digits are monospaced).
+    private var widestReadout: String {
+        DurationText.format(duration)
+    }
+
     private var elapsedText: some View {
-        Text(DurationText.format(displayedTime))
+        FixedWidthReadout(
+            text: DurationText.format(displayedTime),
+            template: widestReadout,
+            alignment: style == .inline ? .trailing : .leading
+        )
     }
 
     private var remainingText: some View {
-        Text("-\(DurationText.format(max(duration - displayedTime, 0)))")
+        FixedWidthReadout(
+            text: "-\(DurationText.format(max(duration - displayedTime, 0)))",
+            template: "-\(widestReadout)",
+            alignment: style == .inline ? .leading : .trailing
+        )
+    }
+}
+
+/// A time readout that keeps the width of `template`, so the slider beside
+/// it doesn't shift as the time gains a digit (9:59 → 10:00).
+private struct FixedWidthReadout: View {
+    let text: String
+    let template: String
+    let alignment: Alignment
+
+    var body: some View {
+        Text(template)
+            .fixedSize()
+            .hidden()
+            .accessibilityHidden(true)
+            .overlay(alignment: alignment) {
+                Text(text)
+                    .fixedSize()
+            }
     }
 }

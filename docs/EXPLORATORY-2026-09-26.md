@@ -25,9 +25,19 @@ same library. Real music and the iCloud folder were never opened.
    other search in both apps already did.
 7. **Mac Time column** truncated "1:10:00" to "1:10:…".
 
+Added after the Mac click-and-keyboard pass:
+
+8. **Mac playing icon vanished in a selected row.** The blue speaker glyph
+   was drawn on the blue selection highlight.
+9. **Mac book page ran flush against the sidebar.** "Listen", "Chapters" and
+   the chapter rows had no leading margin.
+
 ## Usability suggestions to go over
 
-Rough priority order. None of these are implemented.
+Rough priority order. All except #2 were implemented on September 27 at
+Matt's request (#9 as "list track artists too": compilation artists appear
+under their own names as well as under Various Artists). #2 (hiding junk
+files) remains open.
 
 ### Playback
 
@@ -75,24 +85,39 @@ Rough priority order. None of these are implemented.
 
 ### Mac app shell
 
-15. **Relaunch can open with no window.** If the main window was closed when
-    the app quit, the next launch shows only the menu bar until Window > The
-    Old Pod. A music app should always open its library window (and reopen it
-    on Dock click).
-16. **Add a File > Add to Library… (⌘O)** menu item. Importing is only the
+15. **Add a File > Add to Library… (⌘O)** menu item. Importing is only the
     toolbar "+" today, and there is no File menu.
-17. **Mini Player is 340×400 of mostly artwork.** iTunes' mini player was a
+16. **Mini Player is 340×400 of mostly artwork.** iTunes' mini player was a
     thin strip with title and transport. A compact layout, and an optional
     "Keep on top", would make it more useful.
-18. **Status line for the library** (e.g. "40 songs, 3.1 hours") at the foot
+17. **Status line for the library** (e.g. "40 songs, 3.1 hours") at the foot
     of the song table, as iTunes had.
-19. **Setup failure screen is a dead end.** "The Old Pod couldn't set up its
+18. **Setup failure screen is a dead end.** "The Old Pod couldn't set up its
     library folder." offers no reason, retry, or Show in Finder.
+19. **Show in Finder** in the song context menu. For a files-first app it is
+    the natural way to get from a song to its file.
+20. **Get Info shows only editable tags.** No artwork, file path, format,
+    bitrate, size or duration, and track/disc have no "of N" totals.
+21. **Mark the playing chapter on a book page,** as the song table does. Also,
+    starting a book inserts a Resume row that pushes the chapter list down,
+    so a second click can land on the wrong chapter.
+22. **Scrubber shifts sideways** when the elapsed time grows a digit
+    (9:59 → 10:00). Fixed-width time labels would keep it still.
+
+## Mac click-and-keyboard pass (checked, working)
+
+Double-click to play, Space to pause/resume, ⌘→ to skip, dragging the
+scrubber on a 70-minute track, the song context menu, Get Info editing a
+title (the file and an open playlist both picked up the new name), the
+Delete confirmation (cancelled, nothing deleted), a broken file skipping to
+the next song, Books Listen/Resume with the 15-second skips and speed menu,
+and reopening the window after closing it. A normal quit and relaunch
+reopened the window, so the earlier "launched with no window" came from
+force-quitting the test app and is not listed as a problem.
 
 ## Not covered
 
-- Mac double-click play, keyboard shortcuts, context menus and Get Info need
-  real clicks and keys; they wait for a time when the Mac can be left alone.
-- Dark mode, VoiceOver, Dynamic Type, and real iCloud sync were not tested.
+- Dark mode, VoiceOver, Dynamic Type, and real iCloud sync.
+- The UI test suites were not rerun for this pass; package tests pass.
 - Edge case left alone: with Repeat All on and a queue of only broken files,
-  playback now cycles through failures rather than stopping.
+  playback may cycle through failures rather than stopping.

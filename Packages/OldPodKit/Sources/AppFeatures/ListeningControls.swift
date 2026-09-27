@@ -4,12 +4,17 @@ import SwiftUI
 /// Shared audiobook controls: chapter navigation stays in the main transport.
 public struct ListeningControls: View {
     private let player: PlayerController
-    public init(player: PlayerController) {
+    private let isProminent: Bool
+
+    /// `isProminent` sizes the controls to match Now Playing's main
+    /// previous/next transport; the default suits the compact Mac player bar.
+    public init(player: PlayerController, isProminent: Bool = false) {
         self.player = player
+        self.isProminent = isProminent
     }
 
     public var body: some View {
-        HStack(spacing: 20) {
+        HStack(spacing: isProminent ? 28 : 20) {
             Button { player.skip(by: -15) } label: {
                 Image(systemName: "gobackward.15").frame(width: 44, height: 44).contentShape(Rectangle())
             }
@@ -29,7 +34,10 @@ public struct ListeningControls: View {
                     }
                 }
             } label: {
-                Text(Self.label(player.playbackSpeed)).monospacedDigit().frame(minWidth: 44, minHeight: 44)
+                Text(Self.label(player.playbackSpeed))
+                    .font(isProminent ? .body.weight(.semibold) : nil)
+                    .monospacedDigit()
+                    .frame(minWidth: 44, minHeight: 44)
             }
             .accessibilityLabel("Playback speed")
             .accessibilityValue(Self.label(player.playbackSpeed))
@@ -41,6 +49,7 @@ public struct ListeningControls: View {
             .help("Forward 15 seconds")
         }
         .buttonStyle(.borderless)
+        .imageScale(isProminent ? .large : .medium)
         .disabled(player.current == nil)
     }
 

@@ -10,7 +10,9 @@ struct AddToPlaylistSheet: View {
     let track: Track
     let store: PlaylistStore
 
-    @Query(sort: \Playlist.createdAt) private var playlists: [Playlist]
+    // Alphabetical, Finder-style (case/diacritic-insensitive, numbers in
+    // numeric order), so a playlist is found by name, not by when it was made.
+    @Query(sort: [SortDescriptor(\Playlist.name, comparator: .localizedStandard)]) private var playlists: [Playlist]
     @Environment(\.dismiss) private var dismiss
 
     @State private var isPresentingNewPlaylistAlert = false

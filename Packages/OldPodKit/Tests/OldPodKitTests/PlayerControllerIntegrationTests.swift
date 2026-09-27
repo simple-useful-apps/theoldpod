@@ -91,6 +91,38 @@ struct PlayerControllerIntegrationTests {
         controller.stop()
     }
 
+    @Test func skippingAnUnplayableFileShowsANoticeNamingIt() async throws {
+        let controller = PlayerController()
+        // A 0-byte file always fails. Random bytes occasionally contain
+        // enough MP3 frame syncs to "play" as noise, which made this flaky.
+        let empty = try makeUnplayableTrack(named: "empty.mp3", contents: Data())
+        let cbr = try await makePlayableTrack(fixture: "cbr-tagged.mp3")
+        #expect(controller.unplayableNotice == nil)
+
+        controller.play([empty, cbr])
+
+        try await poll(timeout: .seconds(3)) { controller.current == cbr }
+        #expect(controller.unplayableNotice == "Couldn’t play “empty.mp3”.")
+
+        // Starting something else on purpose clears it straight away.
+        controller.play([cbr])
+        #expect(controller.unplayableNotice == nil)
+
+        controller.stop()
+    }
+
+    @Test func stoppingOnAnUnplayableLastFileShowsANotice() async throws {
+        let controller = PlayerController()
+        let empty = try makeUnplayableTrack(named: "empty.mp3", contents: Data())
+
+        controller.play([empty])
+
+        try await poll(timeout: .seconds(3)) { !controller.isPlaying }
+        #expect(controller.unplayableNotice == "Couldn’t play “empty.mp3”.")
+
+        controller.stop()
+    }
+
     @Test func repeatOffStopsPlaybackAtTheEndOfTheQueue() async throws {
         let controller = PlayerController()
         let cbr = try await makePlayableTrack(fixture: "cbr-tagged.mp3")

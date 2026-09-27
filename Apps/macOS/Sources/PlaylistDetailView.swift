@@ -39,7 +39,7 @@ struct PlaylistDetailView: View {
         }
         .focusedSceneValue(\.getInfoAction, getInfoAction(resolved))
         .sheet(item: $metadataEditor) { request in
-            MetadataEditorView(relativePath: request.relativePath, coordinator: coordinator)
+            MetadataEditorView(request: request, coordinator: coordinator)
         }
     }
 
@@ -49,9 +49,13 @@ struct PlaylistDetailView: View {
                 Text(playlist.name)
                     .font(.title2)
                     .fontWeight(.semibold)
-                Text(LibraryText.summary(songs: resolved.rows.count, duration: resolved.totalDuration))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Text(LibraryText.playlistSummary(
+                    songs: resolved.tracks.count,
+                    missing: resolved.rows.count - resolved.tracks.count,
+                    duration: resolved.totalDuration
+                ))
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
             Spacer()
             PlayShuffleButtons(
@@ -111,7 +115,11 @@ struct PlaylistDetailView: View {
 
     private func openInfo(_ track: Track?) {
         guard let track else { return }
-        metadataEditor = MetadataEditorPresentation(relativePath: track.relativePath)
+        metadataEditor = MetadataEditorPresentation(
+            relativePath: track.relativePath,
+            artworkID: track.artworkID,
+            duration: track.duration
+        )
     }
 
     private func removeEntries(_ offsets: IndexSet, ids: Set<PersistentIdentifier>) {

@@ -96,6 +96,110 @@ struct LibraryGroupsTests {
         #expect(artists.map(\.name) == ["Drone Unit", "Émile", "Zebras"])
     }
 
+    @Test func compilationTrackArtistsGetTheirOwnGroupsAlongsideTheAlbumArtist() throws {
+        let context = makeContext()
+        let bjork = insert(
+            context, title: "Joga", artist: "Björk", album: "Now That's Tones", albumArtist: "Various Artists"
+        )
+        let sigur = insert(
+            context, title: "Hoppipolla", artist: "Sigur Rós", album: "Now That's Tones", albumArtist: "Various Artists"
+        )
+
+        let artists = LibraryGroups.artists(from: [bjork, sigur])
+
+        #expect(artists.map(\.name) == ["Björk", "Sigur Rós", "Various Artists"])
+        let various = try #require(artists.first { $0.name == "Various Artists" })
+        #expect(various.trackCount == 2)
+        #expect(various.albums.first?.trackIDs.count == 2)
+
+        let bjorkGroup = try #require(artists.first { $0.name == "Björk" })
+        #expect(bjorkGroup.trackCount == 1)
+        #expect(bjorkGroup.albums.map(\.title) == ["Now That's Tones"])
+        #expect(bjorkGroup.albums.first?.artistName == "Various Artists")
+        #expect(bjorkGroup.albums.first?.trackIDs == [bjork.persistentModelID])
+    }
+
+    @Test func trackArtistMatchingAnAlbumArtistMergesCaseInsensitively() {
+        let context = makeContext()
+        // Seen first as a lowercase compilation credit; the group should
+        // still display the album-artist casing and hold both tracks.
+        let compTrack = insert(
+            context, title: "Stripes", artist: "the zebras", album: "Now That's Tones",
+            albumArtist: "Various Artists", year: 2010
+        )
+        let ownTrack = insert(context, title: "Graze", artist: "The Zebras", album: "Savanna", year: 2004)
+
+        let artists = LibraryGroups.artists(from: [compTrack, ownTrack])
+        let zebras = artists.filter { $0.id == "the zebras" }
+
+        #expect(zebras.count == 1)
+        #expect(zebras.first?.name == "The Zebras")
+        #expect(zebras.first?.trackCount == 2)
+        // Year order, regardless of the compilation's "Various Artists" credit.
+        #expect(zebras.first?.albums.map(\.title) == ["Savanna", "Now That's Tones"])
+    }
+
+    @Test func trackArtistSameAsAlbumArtistIsNotDoubleCounted() {
+        let context = makeContext()
+        let track = insert(context, title: "Song", artist: "band", album: "Record", albumArtist: "Band")
+
+        let artists = LibraryGroups.artists(from: [track])
+
+        #expect(artists.count == 1)
+        #expect(artists[0].name == "Band")
+        #expect(artists[0].trackCount == 1)
+    }
+
+    @Test func emptyTrackArtistOnACompilationAddsNoUnknownArtist() {
+        let context = makeContext()
+        let track = insert(context, title: "Song", artist: "", album: "Mix", albumArtist: "Various Artists")
+
+        let artists = LibraryGroups.artists(from: [track])
+
+        #expect(artists.map(\.name) == ["Various Artists"])
+    }
+
+    @Test func unknownArtistSortsLast() {
+        let context = makeContext()
+        let unknown = insert(context, title: "Song", artist: "")
+        let zebras = insert(context, title: "Song", artist: "Zebras")
+        let abba = insert(context, title: "Song", artist: "ABBA")
+        let upbeat = insert(context, title: "Song", artist: "Upbeat")
+
+        let artists = LibraryGroups.artists(from: [unknown, zebras, abba, upbeat])
+
+        #expect(artists.map(\.name) == ["ABBA", "Upbeat", "Zebras", "Unknown Artist"])
+    }
+
+    @Test func unknownAlbumsSortAfterTitledAlbums() {
+        let context = makeContext()
+        let untitledByAbba = insert(context, title: "Song", artist: "ABBA", album: "")
+        let zebrasAlbum = insert(context, title: "Song", artist: "Zebras", album: "Stripes")
+        let abbaAlbum = insert(context, title: "Song", artist: "ABBA", album: "Arrival")
+        let unknownArtistAlbum = insert(context, title: "Song", artist: "", album: "Found Tape")
+        let fullyUnknown = insert(context, title: "Song", artist: "", album: "")
+
+        let albums = LibraryGroups.albums(from: [untitledByAbba, zebrasAlbum, abbaAlbum, unknownArtistAlbum, fullyUnknown])
+
+        #expect(albums.map { "\($0.artistName)/\($0.title)" } == [
+            "ABBA/Arrival",
+            "Zebras/Stripes",
+            "Unknown Artist/Found Tape",
+            "ABBA/Unknown Album",
+            "Unknown Artist/Unknown Album",
+        ])
+    }
+
+    @Test func anArtistsUnknownAlbumSortsAfterTheirTitledAlbums() {
+        let context = makeContext()
+        let loose = insert(context, title: "Demo", artist: "Band", album: "", year: 1990)
+        let record = insert(context, title: "Hit", artist: "Band", album: "Record", year: 2000)
+
+        let artists = LibraryGroups.artists(from: [loose, record])
+
+        #expect(artists.first?.albums.map(\.title) == ["Record", "Unknown Album"])
+    }
+
     @Test func albumYearIsTheMinimumNonNilYearAcrossItsTracks() {
         let context = makeContext()
         let a = insert(context, title: "A", artist: "Band", album: "Anthology", year: 2005)

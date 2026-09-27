@@ -128,9 +128,11 @@ private struct SongRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(track.title)
                     .font(.body)
+                    .lineLimit(2)
                 Text(track.displayArtist)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
 
             Spacer()

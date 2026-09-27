@@ -6,7 +6,8 @@ import SwiftUI
 
 /// A single album's detail screen: hero artwork, title/artist/metadata line,
 /// Play/Shuffle actions, and the track list (disc/track-ordered, matching
-/// `LibraryGroups.albums(from:)`'s sort).
+/// `LibraryGroups.albums(from:)`'s sort), with "Disc N" section headers on
+/// multi-disc albums.
 struct AlbumDetailView: View {
     let album: AlbumGroup
     let coordinator: LibraryCoordinator
@@ -34,26 +35,15 @@ struct AlbumDetailView: View {
             .listRowInsets(EdgeInsets())
             .listRowSeparator(.hidden)
 
-            Section {
-                ForEach(Array(tracks.enumerated()), id: \.element.persistentModelID) { index, track in
-                    TrackRow(
-                        index: index,
-                        track: track,
-                        isCurrent: coordinator.player.current?.relativePath == track.relativePath
-                    )
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        coordinator.play(tracks, startingAt: index)
+            ForEach(discs(tracks), id: \.number) { disc in
+                if let title = disc.title {
+                    Section(title) {
+                        trackRows(disc.entries, allTracks: tracks)
                     }
-                    .contextMenu {
-                        TrackContextMenuContent(
-                            track: track,
-                            coordinator: coordinator,
-                            onDelete: { deletionRequest = .songs([SongDeletionTarget(track: track)]) },
-                            onAddToPlaylist: { trackPendingPlaylistAdd = track }
-                        )
+                } else {
+                    Section {
+                        trackRows(disc.entries, allTracks: tracks)
                     }
-                    .deleteSwipeAction("Delete Song") { deletionRequest = .songs([SongDeletionTarget(track: track)]) }
                 }
             }
         }
@@ -64,6 +54,52 @@ struct AlbumDetailView: View {
         #endif
             .addToPlaylistSheet(for: $trackPendingPlaylistAdd, coordinator: coordinator)
             .libraryDeletionConfirmation(request: $deletionRequest, coordinator: coordinator)
+    }
+
+    /// One disc's run of the album's (already disc/track-ordered) tracks.
+    /// `title` is "Disc N" only when the album spans more than one disc.
+    private struct Disc {
+        let number: Int
+        let title: String?
+        let entries: [(index: Int, track: Track)]
+    }
+
+    private func discs(_ tracks: [Track]) -> [Disc] {
+        var numbers: [Int] = []
+        var entriesByDisc: [Int: [(index: Int, track: Track)]] = [:]
+        for (index, track) in tracks.enumerated() {
+            // Untagged discs count as disc 1, matching `LibraryGroups`' order.
+            let number = track.discNumber ?? 1
+            if entriesByDisc[number] == nil { numbers.append(number) }
+            entriesByDisc[number, default: []].append((index, track))
+        }
+        let isMultiDisc = numbers.count > 1
+        return numbers.map { number in
+            Disc(number: number, title: isMultiDisc ? "Disc \(number)" : nil, entries: entriesByDisc[number] ?? [])
+        }
+    }
+
+    private func trackRows(_ entries: [(index: Int, track: Track)], allTracks tracks: [Track]) -> some View {
+        ForEach(entries, id: \.track.persistentModelID) { index, track in
+            TrackRow(
+                index: index,
+                track: track,
+                isCurrent: coordinator.player.current?.relativePath == track.relativePath
+            )
+            .contentShape(Rectangle())
+            .onTapGesture {
+                coordinator.play(tracks, startingAt: index)
+            }
+            .contextMenu {
+                TrackContextMenuContent(
+                    track: track,
+                    coordinator: coordinator,
+                    onDelete: { deletionRequest = .songs([SongDeletionTarget(track: track)]) },
+                    onAddToPlaylist: { trackPendingPlaylistAdd = track }
+                )
+            }
+            .deleteSwipeAction("Delete Song") { deletionRequest = .songs([SongDeletionTarget(track: track)]) }
+        }
     }
 
     private func header(tracks: [Track]) -> some View {
@@ -127,7 +163,7 @@ private struct TrackRow: View {
 
             Text(track.title)
                 .font(.body)
-                .lineLimit(1)
+                .lineLimit(2)
 
             Spacer()
 
