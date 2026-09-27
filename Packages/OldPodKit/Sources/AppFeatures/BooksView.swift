@@ -188,7 +188,12 @@ private struct BookDetailView: View {
                 }
             }
         }
+        #if os(macOS)
+        // Plain on the Mac runs rows flush against the sidebar edge.
+        .listStyle(.inset)
+        #else
         .listStyle(.plain)
+        #endif
         .navigationTitle(name)
         .task(id: chapters.map(\.relativePath)) {
             await coordinator.books.prepare(named: name, relativePaths: chapters.map(\.relativePath))

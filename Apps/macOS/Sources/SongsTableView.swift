@@ -123,7 +123,8 @@ struct SongsTableView: View {
                 HStack(spacing: 6) {
                     Image(systemName: "speaker.wave.2.fill")
                         .font(.caption)
-                        .foregroundStyle(.tint)
+                        // Accent-on-accent vanished in a selected row.
+                        .foregroundStyle(selection.contains(row.id) ? AnyShapeStyle(.primary) : AnyShapeStyle(.tint))
                         .opacity(isCurrent(row) ? 1 : 0)
                         .frame(width: 12)
                     Text(row.title)
