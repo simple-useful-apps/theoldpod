@@ -39,13 +39,9 @@ struct PlaylistsListView: View {
                         } label: {
                             row(for: playlist)
                         }
-                        .swipeActions(allowsFullSwipe: false) {
-                            Button(role: .destructive) {
-                                playlistPendingDelete = playlist
-                            } label: {
-                                Label("Delete", systemImage: "trash")
-                            }
-                        }
+                        // Not a destructive-role button: that removes the row
+                        // itself on tap, before the confirmation is answered.
+                        .deleteSwipeAction("Delete") { playlistPendingDelete = playlist }
                         .contextMenu {
                             Button {
                                 rename = PlaylistRename(playlist)

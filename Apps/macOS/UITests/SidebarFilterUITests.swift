@@ -15,7 +15,6 @@ import XCTest
 final class SidebarFilterUITests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
-        try MacUITestFixtures.ensureSeeded()
     }
 
     func testArtistSelectionFiltersTheSongsTable() {
@@ -32,10 +31,10 @@ final class SidebarFilterUITests: XCTestCase {
         assertExists(artistRow, "Artists list should show The Fixtures")
         artistRow.click()
 
-        assertExists(window.staticTexts["Fixture One"], "The Fixtures filter should include Fixture One")
-        assertExists(window.staticTexts["Fixture Two"], "The Fixtures filter should include Fixture Two")
-        assertGone(window.staticTexts["Fixture Three"], "The Fixtures filter should exclude Fixture Three")
-        assertGone(window.staticTexts["untagged"], "The Fixtures filter should exclude untagged")
+        assertExists(rowText(window, "Fixture One"), "The Fixtures filter should include Fixture One")
+        assertExists(rowText(window, "Fixture Two"), "The Fixtures filter should include Fixture Two")
+        assertGone(rowText(window, "Fixture Three"), "The Fixtures filter should exclude Fixture Three")
+        assertGone(rowText(window, "untagged"), "The Fixtures filter should exclude untagged")
         attachScreenshot(app, name: "mac-artist-filter")
     }
 
@@ -52,10 +51,10 @@ final class SidebarFilterUITests: XCTestCase {
         assertExists(albumRow, "Albums list should show Covered")
         albumRow.click()
 
-        assertExists(window.staticTexts["Fixture Three"], "Covered filter should include Fixture Three")
-        assertGone(window.staticTexts["Fixture One"], "Covered filter should exclude Fixture One")
-        assertGone(window.staticTexts["Fixture Two"], "Covered filter should exclude Fixture Two")
-        assertGone(window.staticTexts["untagged"], "Covered filter should exclude untagged")
+        assertExists(rowText(window, "Fixture Three"), "Covered filter should include Fixture Three")
+        assertGone(rowText(window, "Fixture One"), "Covered filter should exclude Fixture One")
+        assertGone(rowText(window, "Fixture Two"), "Covered filter should exclude Fixture Two")
+        assertGone(rowText(window, "untagged"), "Covered filter should exclude untagged")
         attachScreenshot(app, name: "mac-album-filter")
     }
 }

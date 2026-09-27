@@ -7,7 +7,6 @@ import XCTest
 final class LibrarySmokeUITests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
-        try MacUITestFixtures.ensureSeeded()
     }
 
     func testMainWindowSidebarAndSongsListAllFixtures() {
@@ -21,7 +20,7 @@ final class LibrarySmokeUITests: XCTestCase {
 
         // Songs is the default selection.
         for title in ["Fixture One", "Fixture Two", "Fixture Three", "untagged"] {
-            assertExists(window.staticTexts[title], "Songs should list \(title)")
+            assertExists(rowText(window, title), "Songs should list \(title)")
         }
 
         assertExists(app.staticTexts["Not Playing"], "player bar should be idle before anything plays")

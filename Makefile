@@ -46,7 +46,14 @@ uitest:
 		-derivedDataPath $(DD) test CODE_SIGNING_ALLOWED=NO \
 		-only-testing:TheOldPod-UITests
 
+# The Mac app and its test runner are both sandboxed, so the fixture library
+# is seeded here, into the app's own container, fresh for every run.
+MAC_UITEST_LIBRARY := $(HOME)/Library/Containers/com.mattreed.theoldpod/Data/Documents/Acceptance/uitest
+
 mac-uitest:
+	rm -rf "$(MAC_UITEST_LIBRARY)"
+	mkdir -p "$(MAC_UITEST_LIBRARY)"
+	cp Fixtures/cbr-tagged.mp3 Fixtures/vbr-tagged.mp3 Fixtures/art-tagged.mp3 Fixtures/untagged.mp3 "$(MAC_UITEST_LIBRARY)/"
 	xcodebuild -project TheOldPod.xcodeproj -scheme TheOldPod-macOS \
 		-derivedDataPath $(DD) test -allowProvisioningUpdates \
 		-only-testing:TheOldPod-MacUITests

@@ -13,7 +13,6 @@ final class PlaylistUITests: XCTestCase {
 
     override func setUpWithError() throws {
         continueAfterFailure = false
-        try MacUITestFixtures.ensureSeeded()
         app = launchSettledApp()
     }
 
@@ -30,7 +29,7 @@ final class PlaylistUITests: XCTestCase {
         attachScreenshot(app, name: "mac-playlist-created")
 
         selectSidebar(app, "Songs")
-        let fixtureTwoRow = window.staticTexts["Fixture Two"]
+        let fixtureTwoRow = rowText(window, "Fixture Two")
         assertExists(fixtureTwoRow, "Songs should list Fixture Two")
         let addToPlaylist = openContextMenu(on: fixtureTwoRow, expecting: "Add to Playlist", in: app)
         addToPlaylist.click()
@@ -43,7 +42,7 @@ final class PlaylistUITests: XCTestCase {
         playlistMenuItem.click()
 
         selectSidebar(app, Self.playlistLabel)
-        let entryRow = window.staticTexts["Fixture Two"]
+        let entryRow = rowText(window, "Fixture Two")
         assertExists(entryRow, "playlist detail should list Fixture Two")
         attachScreenshot(app, name: "mac-playlist-with-song")
 
