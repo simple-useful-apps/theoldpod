@@ -150,6 +150,8 @@ struct MetadataEditorView: View {
                 .accessibilityLabel(name)
             Text("of")
                 .foregroundStyle(.secondary)
+                // The grid squeezed it to "o'" between the fixed-width fields.
+                .fixedSize()
             TextField("", text: total)
                 .frame(width: 44)
                 .accessibilityLabel("\(name) Total")
