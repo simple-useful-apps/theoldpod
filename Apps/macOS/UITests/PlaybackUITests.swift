@@ -10,14 +10,13 @@ import XCTest
 final class PlaybackUITests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
-        try MacUITestFixtures.ensureSeeded()
     }
 
     func testDoubleClickRowPlaysIt() {
         let app = launchSettledApp()
         let window = mainWindow(app)
 
-        let row = window.staticTexts["Fixture Three"]
+        let row = rowText(window, "Fixture Three")
         assertExists(row, "Songs table should list Fixture Three")
         row.doubleClick()
 
@@ -34,7 +33,7 @@ final class PlaybackUITests: XCTestCase {
         let app = launchSettledApp()
         let window = mainWindow(app)
 
-        let row = window.staticTexts["Fixture One"]
+        let row = rowText(window, "Fixture One")
         assertExists(row, "Songs table should list Fixture One")
         openContextMenu(on: row, expecting: "Play", in: app)
 

@@ -36,7 +36,7 @@ final class PlaylistUITests: XCTestCase {
         attachScreenshot(app, name: "playlist-created")
 
         app.tabBars.buttons["Songs"].tap()
-        let fixtureTwoRow = app.staticTexts["Fixture Two"]
+        let fixtureTwoRow = listText(app, "Fixture Two")
         assertExists(fixtureTwoRow)
         fixtureTwoRow.press(forDuration: 1.0)
 
@@ -54,9 +54,9 @@ final class PlaylistUITests: XCTestCase {
         assertExists(app.staticTexts["1 song"], "playlist should report 1 song after adding Fixture Two")
         attachScreenshot(app, name: "playlist-one-song")
 
-        app.staticTexts[playlistName].tap()
+        listText(app, playlistName).tap()
         assertExists(app.navigationBars[playlistName])
-        let trackRow = app.staticTexts["Fixture Two"]
+        let trackRow = listText(app, "Fixture Two")
         assertExists(trackRow, "playlist detail should list Fixture Two")
         trackRow.tap()
 
@@ -78,12 +78,16 @@ final class PlaylistUITests: XCTestCase {
         guard tabBar.buttons["Playlists"].exists else { return }
         tabBar.buttons["Playlists"].tap()
 
-        let row = app.staticTexts[playlistName]
+        let row = listText(app, playlistName)
         guard row.waitForExistence(timeout: 3) else { return }
         row.swipeLeft()
         let deleteButton = app.buttons["Delete"]
         if deleteButton.waitForExistence(timeout: 3) {
             deleteButton.tap()
+        }
+        let confirmButton = app.buttons["Delete \u{201C}\(playlistName)\u{201D}"]
+        if confirmButton.waitForExistence(timeout: 3) {
+            confirmButton.tap()
         }
     }
 }

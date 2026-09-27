@@ -8,7 +8,6 @@ import SwiftUI
 /// context menu.
 struct PlaylistsListView: View {
     @Query(sort: \Playlist.createdAt) private var playlists: [Playlist]
-    @Environment(\.modelContext) private var modelContext
 
     private let coordinator: LibraryCoordinator
 
@@ -16,14 +15,15 @@ struct PlaylistsListView: View {
     @State private var newPlaylistName = ""
     @State private var searchText = ""
 
-    @State private var renamingPlaylist: Playlist?
-    @State private var renameText = ""
+    @State private var rename: PlaylistRename?
+    @State private var playlistPendingDelete: Playlist?
 
     init(coordinator: LibraryCoordinator) {
         self.coordinator = coordinator
     }
 
     var body: some View {
+        let filtered = playlists.filter { searchText.isEmpty || $0.name.localizedStandardContains(searchText) }
         Group {
             if playlists.isEmpty {
                 ContentUnavailableView(
@@ -33,28 +33,23 @@ struct PlaylistsListView: View {
                 )
             } else {
                 List {
-                    ForEach(playlists.filter { searchText.isEmpty || $0.name.localizedStandardContains(searchText) }) { playlist in
+                    ForEach(filtered) { playlist in
                         NavigationLink {
                             PlaylistDetailView(playlist: playlist, coordinator: coordinator)
                         } label: {
                             row(for: playlist)
                         }
-                        .swipeActions {
-                            Button(role: .destructive) {
-                                PlaylistOps.delete(playlist, in: modelContext)
-                            } label: {
-                                Label("Delete", systemImage: "trash")
-                            }
-                        }
+                        // Not a destructive-role button: that removes the row
+                        // itself on tap, before the confirmation is answered.
+                        .deleteSwipeAction("Delete") { playlistPendingDelete = playlist }
                         .contextMenu {
                             Button {
-                                renameText = playlist.name
-                                renamingPlaylist = playlist
+                                rename = PlaylistRename(playlist)
                             } label: {
                                 Label("Rename", systemImage: "pencil")
                             }
                             Button(role: .destructive) {
-                                PlaylistOps.delete(playlist, in: modelContext)
+                                playlistPendingDelete = playlist
                             } label: {
                                 Label("Delete", systemImage: "trash")
                             }
@@ -65,11 +60,7 @@ struct PlaylistsListView: View {
             }
         }
         .searchable(text: $searchText, prompt: "Search Playlists")
-        .overlay {
-            if !playlists.isEmpty, !searchText.isEmpty, !playlists.contains(where: { $0.name.localizedStandardContains(searchText) }) {
-                ContentUnavailableView.search(text: searchText)
-            }
-        }
+        .searchEmptyOverlay(isEmpty: !playlists.isEmpty && filtered.isEmpty, searchText: searchText)
         .refreshable { await coordinator.refreshLibrary() }
         .toolbar {
             ToolbarItem(placement: .automatic) { LibraryStatusButton(coordinator: coordinator) }
@@ -85,29 +76,12 @@ struct PlaylistsListView: View {
         .alert("New Playlist", isPresented: $isPresentingNewPlaylistAlert) {
             TextField("Playlist Name", text: $newPlaylistName)
             Button("Create") {
-                PlaylistOps.create(name: newPlaylistName, in: modelContext)
+                coordinator.playlists.create(name: newPlaylistName)
             }
             Button("Cancel", role: .cancel) {}
         }
-        .alert("Rename Playlist", isPresented: renamingPlaylistBinding) {
-            TextField("Playlist Name", text: $renameText)
-            Button("Save") {
-                if let renamingPlaylist {
-                    PlaylistOps.rename(renamingPlaylist, to: renameText, in: modelContext)
-                }
-            }
-            Button("Cancel", role: .cancel) {}
-        }
-    }
-
-    /// Bridges the optional `renamingPlaylist` (which the alert needs to
-    /// know *which* playlist to rename on save) to the `Bool` binding
-    /// `.alert(_:isPresented:)` requires.
-    private var renamingPlaylistBinding: Binding<Bool> {
-        Binding(
-            get: { renamingPlaylist != nil },
-            set: { isPresented in if !isPresented { renamingPlaylist = nil } }
-        )
+        .playlistRenameAlert($rename, coordinator: coordinator)
+        .playlistDeleteConfirmation(for: $playlistPendingDelete, coordinator: coordinator)
     }
 
     private func row(for playlist: Playlist) -> some View {

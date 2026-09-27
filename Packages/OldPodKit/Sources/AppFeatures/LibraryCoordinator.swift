@@ -9,20 +9,11 @@ import os
 import PlaybackEngine
 import SwiftData
 
-public enum BookPreparationState: Sendable, Equatable {
-    case preparing(completed: Int, total: Int)
-    case ready
-    case failed(String)
-}
-
-/// Non-UI coordinator that owns the library's SwiftData container, artwork
-/// cache, and folder watcher, and pumps file-system diffs into the indexer.
-/// Also owns the playback stack: the `PlayerController` and its
-/// `NowPlayingBridge` to the lock screen / Control Center / media keys.
-///
-/// Also owns playlist file sync: playlists live as `.m3u8` files under
-/// `<libraryRoot>/Playlists`, so the SwiftData store stays rebuildable from
-/// the library folder per `CLAUDE.md`, same as `Track`s.
+/// Wires the library together: the SwiftData container, artwork cache and
+/// folder watcher feeding the indexer; the playback stack; and the stores
+/// views act through (playlists, imports, book preparation). Playlists live
+/// as `.m3u8` files under `<libraryRoot>/Playlists`, so the SwiftData store
+/// stays rebuildable from the library folder, same as `Track`s.
 @MainActor
 @Observable
 public final class LibraryCoordinator {
@@ -31,10 +22,12 @@ public final class LibraryCoordinator {
     public let isCloudLibrary: Bool
     public let player: PlayerController
     public let nowPlaying: NowPlayingBridge
+    public let playlists: PlaylistStore
+    public let books: BookPreparer
+    public private(set) var importer: LibraryImporter!
     public private(set) var lastChecked: Date?
     public private(set) var refreshError: String?
     public private(set) var isDeletingLibraryItems = false
-    public private(set) var bookPreparation: [String: BookPreparationState] = [:]
 
     private let watcher: any LibraryFolderWatching
     private let artwork: ArtworkStore
@@ -45,11 +38,15 @@ public final class LibraryCoordinator {
         private let metadataEditor: AudioMetadataEditor
     #endif
     private var watchTask: Task<Void, Never>?
-    private var refreshWaiters: [UUID: RefreshWaiter] = [:]
+    private var refreshRequests: [UUID: RefreshRequest] = [:]
 
-    private struct RefreshExpectation {
+    /// A refresh waiting for the index to confirm that the given files are
+    /// gone. A plain refresh has nothing to confirm and completes on the next
+    /// saved batch.
+    private struct RefreshRequest {
         let absentPaths: Set<String>
         let absentBookIDs: Set<String>
+        let continuation: CheckedContinuation<Bool, Never>
 
         func isSatisfied(by indexedPaths: Set<String>) -> Bool {
             guard absentPaths.isDisjoint(with: indexedPaths) else { return false }
@@ -59,13 +56,7 @@ public final class LibraryCoordinator {
         }
     }
 
-    private struct RefreshWaiter {
-        let continuation: CheckedContinuation<Bool, Never>
-        let expectation: RefreshExpectation
-    }
-
-    /// Where `ArtworkStore` caches embedded artwork, for views (`ArtworkImage`,
-    /// `NowPlayingView`) that render it directly.
+    /// Where `ArtworkStore` caches embedded artwork, for views that render it.
     public var artworkDirectory: URL {
         artwork.directory
     }
@@ -83,7 +74,8 @@ public final class LibraryCoordinator {
         self.artwork = artwork
         self.libraryRoot = libraryRoot
         self.isCloudLibrary = isCloudLibrary
-        indexer = LibraryIndexer(modelContainer: container, artwork: artwork)
+        let indexer = LibraryIndexer(modelContainer: container, artwork: artwork)
+        self.indexer = indexer
         deletionService = LibraryDeletionService(libraryRoot: libraryRoot)
         #if os(macOS)
             metadataEditor = AudioMetadataEditor(libraryRoot: libraryRoot)
@@ -94,16 +86,19 @@ public final class LibraryCoordinator {
         nowPlaying = NowPlayingBridge(player: player, artworkDirectory: artwork.directory)
 
         let playlistsDirectory = libraryRoot.appendingPathComponent("Playlists", isDirectory: true)
-        let playlistSync = PlaylistFileSync(store: PlaylistFileStore(directory: playlistsDirectory), container: container)
-        self.playlistSync = playlistSync
-        PlaylistOps.fileSync = playlistSync
+        playlistSync = PlaylistFileSync(store: PlaylistFileStore(directory: playlistsDirectory), container: container)
+        playlists = PlaylistStore(context: container.mainContext, files: playlistSync)
+        books = BookPreparer(libraryRoot: libraryRoot, container: container, indexer: indexer) {
+            Self.refreshPlayableTracks(in: container, libraryRoot: libraryRoot, player: player)
+        }
+        importer = LibraryImporter(libraryRoot: libraryRoot) { [weak self] in
+            _ = await self?.refreshLibrary()
+        }
     }
 
-    /// Resolves the library location (cloud if available, else the local
-    /// fallback — see `LibraryLocation.resolve()`) and builds the full
-    /// coordinator stack around it. `nil` only if setting up the model
-    /// container or artwork store throws, which local-only `init()` would
-    /// also fail on.
+    /// Resolves the library location (iCloud when available, else the local
+    /// fallback) and builds the coordinator around it. `nil` only if the
+    /// model container or artwork store cannot be set up.
     @MainActor
     public static func make() async -> LibraryCoordinator? {
         #if DEBUG
@@ -145,57 +140,41 @@ public final class LibraryCoordinator {
                 isCloudLibrary: resolved.isCloud
             )
         } catch {
-            // Surfaced in the UI only as the generic failure screen — the
-            // specifics land here (a silent catch hid a CloudKit-vs-SwiftData
-            // misconfiguration for a whole debugging session).
+            // The UI only shows a generic failure screen; the cause lands here.
             Logger(subsystem: "OldPodKit.AppFeatures", category: "LibraryCoordinator")
                 .fault("Library setup failed: \(error)")
             return nil
         }
     }
 
-    /// Idempotent: starts a task consuming `watcher.changes()` into the
-    /// indexer, activates the now-playing bridge, and brings playlist file
-    /// sync online (one-time migration + reconcile, then live watching).
-    /// Calling this again while already running is a no-op.
+    /// Starts indexing folder changes, activates the now-playing bridge, and
+    /// brings playlist file sync online. Calling it again is a no-op.
     public func start() {
         guard watchTask == nil else { return }
-        let container = container
-        let watcher = watcher
-        watchTask = Task {
-            let indexer = self.indexer
-            // The stream's first emission is the watcher's full snapshot
-            // (LibraryFolderWatching contract). It is authoritative: rows for
-            // files that no longer exist under the CURRENT root are pruned,
-            // so switching roots (local → iCloud) can't leave a stale
-            // library behind. Later emissions are incremental diffs.
+        watchTask = Task { [watcher, indexer] in
+            // The first emission is the watcher's full snapshot, and it is
+            // authoritative: rows for files missing under the current root
+            // are pruned. Later emissions are incremental diffs.
             var isInitialSnapshot = true
             for await changes in watcher.changes() {
-                // Capture before the actor hop. A refresh requested while an
-                // older batch is indexing must wait for a later emission.
-                let waitingForThisBatch = self.refreshWaiters
-                let saved = await indexer.apply(changes, reconcilingFullSnapshot: isInitialSnapshot)
-                if saved, let tracks = try? container.mainContext.fetch(FetchDescriptor<Track>()) {
-                    let playable = self.playableTracks(from: tracks)
-                    self.player.restoreSession(available: playable)
-                    self.player.refreshAvailableTracks(playable)
-                }
+                // A refresh requested while this batch is indexing waits for
+                // the next one.
+                let pending = refreshRequests
+                let indexedPaths = await indexer.apply(changes, reconcilingFullSnapshot: isInitialSnapshot)
                 isInitialSnapshot = false
-                if saved {
-                    self.lastChecked = Date()
+                if indexedPaths != nil {
+                    refreshPlayableTracks()
+                    lastChecked = Date()
                 } else {
-                    self.refreshError = "Library changes couldn’t be saved. Check available storage and try again."
+                    refreshError = "Library changes couldn’t be saved. Check available storage and try again."
                 }
-                let indexedPaths = saved ? try? await indexer.indexedRelativePaths() : nil
-                for (id, waiter) in waitingForThisBatch {
-                    if !saved {
-                        self.completeRefreshWaiter(id, succeeded: false)
-                    } else if let indexedPaths,
-                              waiter.expectation.isSatisfied(by: indexedPaths)
-                    {
-                        self.completeRefreshWaiter(id, succeeded: true)
-                    } else if indexedPaths == nil {
-                        self.completeRefreshWaiter(id, succeeded: false)
+                for (id, request) in pending {
+                    guard let indexedPaths else {
+                        completeRefresh(id, succeeded: false)
+                        continue
+                    }
+                    if request.isSatisfied(by: indexedPaths) {
+                        completeRefresh(id, succeeded: true)
                     }
                 }
             }
@@ -205,114 +184,32 @@ public final class LibraryCoordinator {
         playlistSync.startWatching()
     }
 
-    /// Snapshots SwiftData `Track`s into `PlayableTrack` values suitable for
-    /// handing to `player.play(_:startingAt:)`.
     public func playableTracks(from tracks: [Track]) -> [PlayableTrack] {
         tracks.map { PlayableTrack(track: $0, libraryRoot: libraryRoot) }
     }
 
-    /// Loads only missing metadata for the book the user opened. Reads are
-    /// bounded to three files at a time and the indexer refetches each row
-    /// before applying results, so an in-flight read cannot resurrect a
-    /// chapter deleted from the authoritative library folder.
-    public func prepareBook(named name: String, relativePaths: [String]) async {
-        guard !relativePaths.isEmpty else { return }
-        let requested = Set(relativePaths)
-        let descriptor = FetchDescriptor<Track>()
-        guard let tracks = try? container.mainContext.fetch(descriptor) else { return }
-        let missing = tracks.filter {
-            requested.contains($0.relativePath) && (!$0.isDownloaded || $0.duration <= 0)
-        }.map(\.relativePath)
-        guard !missing.isEmpty else {
-            bookPreparation[name] = .ready
-            return
-        }
-
-        bookPreparation[name] = .preparing(completed: 0, total: missing.count)
-        var completed = 0
-        var failures: [String] = []
-        for start in stride(from: 0, to: missing.count, by: 3) {
-            guard !Task.isCancelled else { return }
-            let batch = Array(missing[start ..< min(start + 3, missing.count)])
-            let results = await withTaskGroup(of: LibraryMetadataRefresh?.self) { group in
-                for path in batch {
-                    let url = libraryRoot.appendingPathComponent(path)
-                    group.addTask {
-                        DownloadRequester.requestDownload(of: url)
-                        for attempt in 0 ..< 4 {
-                            if Task.isCancelled { return nil }
-                            let keys: Set<URLResourceKey> = [
-                                .fileSizeKey, .contentModificationDateKey, .fileResourceIdentifierKey,
-                            ]
-                            if let before = try? url.resourceValues(forKeys: keys),
-                               let size = before.fileSize,
-                               let modified = before.contentModificationDate,
-                               let metadata = try? await MetadataReader.read(from: url), metadata.duration > 0,
-                               let after = try? url.resourceValues(forKeys: keys),
-                               after.fileSize == size,
-                               after.contentModificationDate == modified,
-                               Self.resourceIdentifier(after) == Self.resourceIdentifier(before)
-                            {
-                                return LibraryMetadataRefresh(
-                                    relativePath: path,
-                                    url: url,
-                                    metadata: metadata,
-                                    fileSize: Int64(size),
-                                    fileModified: modified,
-                                    fileResourceIdentifier: Self.resourceIdentifier(before)
-                                )
-                            }
-                            if attempt < 3 { try? await Task.sleep(for: .milliseconds(750)) }
-                        }
-                        return nil
-                    }
-                }
-                var loaded: [LibraryMetadataRefresh] = []
-                for await result in group {
-                    if let result { loaded.append(result) }
-                }
-                return loaded
-            }
-            guard !Task.isCancelled else { return }
-            let updated = await indexer.applyMetadataRefreshes(results)
-            failures.append(contentsOf: batch.filter { !updated.contains($0) })
-            completed += batch.count
-            bookPreparation[name] = .preparing(completed: completed, total: missing.count)
-        }
-
-        if failures.isEmpty {
-            bookPreparation[name] = .ready
-        } else {
-            bookPreparation[name] = .failed("Some chapter details aren’t available yet. Check your connection and try again.")
-        }
-        if let refreshed = try? container.mainContext.fetch(FetchDescriptor<Track>()) {
-            player.refreshAvailableTracks(playableTracks(from: refreshed))
-        }
-    }
-
-    // MARK: - Play conveniences
-
+    /// Rescans the library folder and waits for the index to catch up.
+    /// Returns `false` if the folder could not be read or the index did not
+    /// confirm the change within a reasonable time.
     @discardableResult
     public func refreshLibrary() async -> Bool {
-        await refreshLibrary(requiringAbsentPaths: [], absentBookIDs: [])
+        await refreshLibrary(untilAbsent: [], bookIDs: [])
     }
 
-    private func refreshLibrary(
-        requiringAbsentPaths absentPaths: Set<String>,
-        absentBookIDs: Set<String>
-    ) async -> Bool {
+    private func refreshLibrary(untilAbsent absentPaths: Set<String>, bookIDs absentBookIDs: Set<String>) async -> Bool {
         refreshError = nil
-        let waiterID = UUID()
+        let id = UUID()
         return await withCheckedContinuation { continuation in
-            refreshWaiters[waiterID] = RefreshWaiter(
-                continuation: continuation,
-                expectation: RefreshExpectation(absentPaths: absentPaths, absentBookIDs: absentBookIDs)
+            refreshRequests[id] = RefreshRequest(
+                absentPaths: absentPaths,
+                absentBookIDs: absentBookIDs,
+                continuation: continuation
             )
             Task {
                 try? await Task.sleep(for: .seconds(15))
-                guard refreshWaiters[waiterID] != nil else { return }
+                guard refreshRequests[id] != nil else { return }
                 refreshError = "The library check is still pending. Try refreshing again if the list doesn’t update."
-                completeRefreshWaiter(waiterID, succeeded: false)
+                completeRefresh(id, succeeded: false)
             }
             Task {
                 do {
@@ -320,16 +217,14 @@ public final class LibraryCoordinator {
                     playlistSync.reconcile()
                 } catch {
                     refreshError = "The library folder couldn’t be read. Check that it’s available and try again."
-                    completeRefreshWaiter(waiterID, succeeded: false)
-                    return
+                    completeRefresh(id, succeeded: false)
                 }
             }
         }
     }
 
     /// Moves the requested library-owned song files to Trash. SwiftData is
-    /// updated only by the authoritative folder watcher after successful
-    /// file operations.
+    /// updated only by the folder watcher after the files have moved.
     public func deleteSongs(relativePaths: [String]) async -> LibraryDeletionResult {
         guard !isDeletingLibraryItems else {
             return LibraryDeletionResult(failures: relativePaths.map {
@@ -343,14 +238,14 @@ public final class LibraryCoordinator {
         let succeeded = Set(result.succeededTargets)
         if !succeeded.isEmpty {
             player.removeDeletedLibraryItems(relativePaths: succeeded)
-            if await !refreshLibrary(requiringAbsentPaths: succeeded, absentBookIDs: []) {
+            if await !refreshLibrary(untilAbsent: succeeded, bookIDs: []) {
                 result = result.withPostDeletionWarning()
             }
         }
         return result
     }
 
-    /// Moves exactly `Audiobooks/<name>` and all of its contents to Trash.
+    /// Moves `Audiobooks/<name>` and all of its contents to Trash.
     public func deleteBook(named name: String) async -> LibraryDeletionResult {
         guard !isDeletingLibraryItems else {
             return LibraryDeletionResult(failures: [
@@ -363,7 +258,7 @@ public final class LibraryCoordinator {
         var result = await deletionService.deleteBook(named: name)
         if result.isCompleteSuccess {
             player.removeDeletedLibraryItems(relativePaths: [], bookIDs: [name])
-            if await !refreshLibrary(requiringAbsentPaths: [], absentBookIDs: [name]) {
+            if await !refreshLibrary(untilAbsent: [], bookIDs: [name]) {
                 result = result.withPostDeletionWarning()
             }
         }
@@ -371,8 +266,8 @@ public final class LibraryCoordinator {
     }
 
     #if os(macOS)
-        /// Reads the embedded values for Get Info instead of projecting the
-        /// index row, whose title may be a filename fallback rather than a tag.
+        /// Reads the embedded tags for Get Info rather than the index row,
+        /// whose title may be a filename fallback.
         public func metadataEditSession(for relativePath: String) async throws -> AudioMetadataEditSession {
             guard AudiobookPath.bookID(for: relativePath) == nil else {
                 throw AudioMetadataEditorError.unsupportedFile
@@ -380,9 +275,8 @@ public final class LibraryCoordinator {
             return try await metadataEditor.load(relativePath: relativePath)
         }
 
-        /// Updates the source file, then refreshes the one SwiftData row and
-        /// queue snapshots explicitly. `refreshAvailableTracks` changes the
-        /// displayed metadata without replacing the current AVPlayerItem.
+        /// Updates the file, then refreshes its one index row and the queue's
+        /// snapshots in place, without replacing the current player item.
         @discardableResult
         public func updateMetadata(
             relativePath: String,
@@ -397,40 +291,21 @@ public final class LibraryCoordinator {
             guard changed else { return false }
 
             let url = libraryRoot.appendingPathComponent(relativePath)
-            let keys: Set<URLResourceKey> = [
-                .fileSizeKey, .contentModificationDateKey, .fileResourceIdentifierKey,
-            ]
-            guard let values = try? url.resourceValues(forKeys: keys),
-                  let size = values.fileSize,
-                  let modified = values.contentModificationDate,
-                  let metadata = try? await MetadataReader.read(from: url)
-            else {
-                _ = await refreshLibrary()
-                return true
-            }
-            let refresh = LibraryMetadataRefresh(
-                relativePath: relativePath,
-                url: url,
-                metadata: metadata,
-                fileSize: Int64(size),
-                fileModified: modified,
-                fileResourceIdentifier: Self.resourceIdentifier(values)
-            )
-            let updated = await indexer.applyMetadataRefreshes([refresh])
-            if updated.contains(relativePath),
-               let tracks = try? container.mainContext.fetch(FetchDescriptor<Track>())
+            if let version = FileVersion.current(at: url),
+               let metadata = try? await MetadataReader.read(from: url),
+               await indexer.applyMetadataRefreshes([
+                   LibraryMetadataRefresh(relativePath: relativePath, url: url, metadata: metadata, fileVersion: version),
+               ]).contains(relativePath)
             {
-                player.refreshAvailableTracks(playableTracks(from: tracks))
+                refreshPlayableTracks()
                 lastChecked = Date()
             } else {
-                _ = await refreshLibrary()
+                await refreshLibrary()
             }
             return true
         }
     #endif
 
-    /// Thin wrappers over `playableTracks(from:)` + `player`, so views never
-    /// need to spell out that two-step dance themselves.
     public func play(_ tracks: [Track], startingAt index: Int = 0) {
         player.play(playableTracks(from: tracks), startingAt: index)
     }
@@ -447,17 +322,18 @@ public final class LibraryCoordinator {
         player.append(playableTracks(from: tracks))
     }
 
-    /// No production caller today — the coordinator lives for the whole
-    /// process. Kept as the symmetric teardown for tests and any future
-    /// library-root switching.
-    public func stop() {
-        player.saveProgress()
-        watcher.stop()
-        watchTask?.cancel()
-        watchTask = nil
-        completeRefreshWaiters(succeeded: false)
-        playlistSync.stop()
-        nowPlaying.deactivate()
+    /// Hands the player fresh snapshots of every track, so queued items pick
+    /// up new metadata and a saved session can be restored once its files
+    /// are indexed.
+    private func refreshPlayableTracks() {
+        Self.refreshPlayableTracks(in: container, libraryRoot: libraryRoot, player: player)
+    }
+
+    private static func refreshPlayableTracks(in container: ModelContainer, libraryRoot: URL, player: PlayerController) {
+        guard let tracks = try? container.mainContext.fetch(FetchDescriptor<Track>()) else { return }
+        let playable = tracks.map { PlayableTrack(track: $0, libraryRoot: libraryRoot) }
+        player.restoreSession(available: playable)
+        player.refreshAvailableTracks(playable)
     }
 
     private static func defaultArtworkDirectory() throws -> URL {
@@ -471,20 +347,8 @@ public final class LibraryCoordinator {
         return directory
     }
 
-    private nonisolated static func resourceIdentifier(_ values: URLResourceValues) -> String? {
-        values.fileResourceIdentifier.map { String(describing: $0) }
-    }
-
-    private func completeRefreshWaiter(_ id: UUID, succeeded: Bool) {
-        refreshWaiters.removeValue(forKey: id)?.continuation.resume(returning: succeeded)
-    }
-
-    private func completeRefreshWaiters(succeeded: Bool) {
-        let waiters = refreshWaiters.values.map(\.continuation)
-        refreshWaiters.removeAll()
-        for waiter in waiters {
-            waiter.resume(returning: succeeded)
-        }
+    private func completeRefresh(_ id: UUID, succeeded: Bool) {
+        refreshRequests.removeValue(forKey: id)?.continuation.resume(returning: succeeded)
     }
 }
 
@@ -494,7 +358,8 @@ private extension LibraryDeletionResult {
             successfulTargets: successfulTargets,
             alreadyMissingTargets: alreadyMissingTargets,
             failures: failures,
-            postDeletionWarning: "The selected files were moved to Trash. The library check is still pending or didn’t finish. Use Refresh Library if the list doesn’t update."
+            postDeletionWarning: "The selected files were moved to Trash. "
+                + "The library check is still pending or didn’t finish. Use Refresh Library if the list doesn’t update."
         )
     }
 }

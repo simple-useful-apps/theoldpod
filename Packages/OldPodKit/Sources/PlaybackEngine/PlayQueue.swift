@@ -22,9 +22,13 @@ public struct PlayableTrack: Sendable, Equatable, Identifiable {
         AudiobookPath.bookID(for: relativePath)
     }
 
+    public var displayArtist: String {
+        artist.isEmpty ? "Unknown Artist" : artist
+    }
+
     public var subtitle: String {
         if bookID != nil { return artist.isEmpty ? album : "\(artist) · \(album)" }
-        return "\(artist.isEmpty ? "Unknown Artist" : artist) · \(album.isEmpty ? "Unknown Album" : album)"
+        return "\(displayArtist) · \(album.isEmpty ? "Unknown Album" : album)"
     }
 
     public init(
@@ -249,16 +253,6 @@ public struct PlayQueue: Sendable, Equatable {
         let byPath = Dictionary(available.map { ($0.relativePath, $0) }, uniquingKeysWith: { first, _ in first })
         items = items.map { byPath[$0.relativePath] ?? $0 }
         originalOrder = originalOrder.map { byPath[$0.relativePath] ?? $0 }
-    }
-
-    /// Bounds-checked jump to an arbitrary index; leaves state untouched and
-    /// returns nil if `index` is out of range.
-    /// Not yet wired to any UI — reserved for the future "Up Next" queue
-    /// screen (see docs/BACKLOG.md).
-    public mutating func jump(to index: Int) -> PlayableTrack? {
-        guard items.indices.contains(index) else { return nil }
-        currentIndex = index
-        return items[index]
     }
 
     /// Removes every occurrence of an exact path, plus every chapter below

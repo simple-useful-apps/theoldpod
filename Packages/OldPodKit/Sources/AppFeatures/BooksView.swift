@@ -12,9 +12,6 @@ public struct BooksView: View {
     @State private var namingBook = false
     @State private var pickingFiles = false
     @State private var title = ""
-    @State private var importing = false
-    @State private var importError: String?
-    @State private var importProgress: ImportProgress?
     @State private var searchText = ""
     @State private var deletionRequest: LibraryDeletionRequest?
 
@@ -22,11 +19,10 @@ public struct BooksView: View {
         self.coordinator = coordinator
     }
 
-    private var bookNames: [String] {
-        Array(Set(tracks.compactMap(\.bookID))).sorted { $0.localizedStandardCompare($1) == .orderedAscending }
-    }
-
     public var body: some View {
+        let chaptersByBook = Dictionary(grouping: tracks.filter(\.isAudiobook)) { $0.bookID ?? "" }
+        let bookNames = chaptersByBook.keys.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+        let filtered = bookNames.filter { searchText.isEmpty || $0.localizedStandardContains(searchText) }
         Group {
             if bookNames.isEmpty {
                 ContentUnavailableView {
@@ -35,10 +31,10 @@ public struct BooksView: View {
                     Text("Import a book folder or select its chapter files. Each book keeps its own listening position.")
                 } actions: {
                     Button("Import Book") { title = ""; namingBook = true }
-                        .disabled(importing)
+                        .disabled(coordinator.importer.isImporting)
                 }
             } else {
-                List(bookNames.filter { searchText.isEmpty || $0.localizedStandardContains(searchText) }, id: \.self) { name in
+                List(filtered, id: \.self) { name in
                     NavigationLink {
                         BookDetailView(name: name, coordinator: coordinator)
                     } label: {
@@ -48,8 +44,7 @@ public struct BooksView: View {
                                 .foregroundStyle(.secondary)
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(name)
-                                let chapters = tracks.filter { $0.bookID == name }
-                                Text(bookSummary(chapters))
+                                Text(bookSummary(chaptersByBook[name] ?? []))
                                     .font(.caption).foregroundStyle(.secondary)
                             }
                         }
@@ -59,27 +54,14 @@ public struct BooksView: View {
                             deletionRequest = .book(name: name)
                         }
                     }
-                    #if os(iOS)
-                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                        Button {
-                            deletionRequest = .book(name: name)
-                        } label: {
-                            Label("Delete Book", systemImage: "trash")
-                        }
-                        .tint(.red)
-                    }
-                    #endif
+                    .deleteSwipeAction("Delete Book") { deletionRequest = .book(name: name) }
                 }
                 .listStyle(.plain)
             }
         }
         .navigationTitle("Books")
         .searchable(text: $searchText, prompt: "Search Books")
-        .overlay {
-            if !bookNames.isEmpty, !searchText.isEmpty, !bookNames.contains(where: { $0.localizedStandardContains(searchText) }) {
-                ContentUnavailableView.search(text: searchText)
-            }
-        }
+        .searchEmptyOverlay(isEmpty: !bookNames.isEmpty && filtered.isEmpty, searchText: searchText)
         .refreshable { await coordinator.refreshLibrary() }
         .toolbar {
             #if os(iOS)
@@ -89,17 +71,11 @@ public struct BooksView: View {
                 Button {
                     title = ""; namingBook = true
                 } label: {
-                    Label(importing ? "Importing…" : "Import Book", systemImage: "plus")
+                    Label(coordinator.importer.isImporting ? "Importing…" : "Import Book", systemImage: "plus")
                 }
-                .disabled(importing)
+                .disabled(coordinator.importer.isImporting)
             }
-            if let progress = importProgress {
-                ToolbarItem(placement: .automatic) {
-                    Text("\(progress.description) (\(progress.completed) of \(progress.total))")
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-            }
+            ToolbarItem(placement: .automatic) { ImportProgressLabel(coordinator.importer) }
         }
         .alert("Import Book", isPresented: $namingBook) {
             TextField("Book title", text: $title)
@@ -109,22 +85,16 @@ public struct BooksView: View {
         } message: {
             Text("Name the book, then select its folder or all its chapter files. Originals are left unchanged.")
         }
-        .fileImporter(isPresented: $pickingFiles, allowedContentTypes: ImportService.supportedContentTypes, allowsMultipleSelection: true) { result in
-            guard case let .success(urls) = result, !importing else { return }
-            importing = true
-            let bookTitle = title
-            Task {
-                let result = await ImportService(libraryRoot: coordinator.libraryRoot).importAudiobook(at: urls, title: bookTitle) { progress in
-                    importProgress = progress
-                }
-                importing = false
-                importProgress = nil
-                importError = result.report
+        .fileImporter(
+            isPresented: $pickingFiles,
+            allowedContentTypes: ImportService.supportedContentTypes,
+            allowsMultipleSelection: true
+        ) { result in
+            if case let .success(urls) = result {
+                coordinator.importer.importAudiobook(at: urls, title: title)
             }
         }
-        .alert("Book Import", isPresented: Binding(get: { importError != nil }, set: { if !$0 { importError = nil } })) {
-            Button("OK", role: .cancel) {}
-        } message: { Text(importError ?? "") }
+        .importReportAlert(coordinator.importer)
         .libraryDeletionConfirmation(request: $deletionRequest, coordinator: coordinator)
     }
 
@@ -143,8 +113,8 @@ private struct BookDetailView: View {
     @State private var deletionRequest: LibraryDeletionRequest?
 
     private var chapters: [Track] {
+        // Chapters sort by filename, not tag: untagged downloads still read in order.
         tracks.filter { $0.bookID == name }.sorted {
-            // Filename prefixes are authoritative for untagged Manning books.
             $0.relativePath.localizedStandardCompare($1.relativePath) == .orderedAscending
         }
     }
@@ -154,7 +124,7 @@ private struct BookDetailView: View {
         let progress = coordinator.player.bookProgress(name)
         List {
             Section {
-                if let state = coordinator.bookPreparation[name] {
+                if let state = coordinator.books.states[name] {
                     switch state {
                     case let .preparing(completed, total):
                         HStack {
@@ -168,7 +138,7 @@ private struct BookDetailView: View {
                         VStack(alignment: .leading, spacing: 8) {
                             Text(message).foregroundStyle(.secondary)
                             Button("Try Again") {
-                                Task { await coordinator.prepareBook(named: name, relativePaths: chapters.map(\.relativePath)) }
+                                Task { await coordinator.books.prepare(named: name, relativePaths: chapters.map(\.relativePath)) }
                             }
                         }
                     }
@@ -221,7 +191,7 @@ private struct BookDetailView: View {
         .listStyle(.plain)
         .navigationTitle(name)
         .task(id: chapters.map(\.relativePath)) {
-            await coordinator.prepareBook(named: name, relativePaths: chapters.map(\.relativePath))
+            await coordinator.books.prepare(named: name, relativePaths: chapters.map(\.relativePath))
         }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {

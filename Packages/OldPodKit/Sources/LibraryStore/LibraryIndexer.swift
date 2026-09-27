@@ -5,59 +5,46 @@ import MetadataImport
 import os
 import SwiftData
 
+/// Metadata read from a file, together with the version of the file it was
+/// read from, so the indexer can refuse results for a file that changed.
 public struct LibraryMetadataRefresh: Sendable {
     public let relativePath: String
     public let url: URL
     public let metadata: TrackMetadata
-    public let fileSize: Int64
-    public let fileModified: Date
-    public let fileResourceIdentifier: String?
+    public let fileVersion: FileVersion
 
-    public init(
-        relativePath: String,
-        url: URL,
-        metadata: TrackMetadata,
-        fileSize: Int64,
-        fileModified: Date,
-        fileResourceIdentifier: String?
-    ) {
+    public init(relativePath: String, url: URL, metadata: TrackMetadata, fileVersion: FileVersion) {
         self.relativePath = relativePath
         self.url = url
         self.metadata = metadata
-        self.fileSize = fileSize
-        self.fileModified = fileModified
-        self.fileResourceIdentifier = fileResourceIdentifier
+        self.fileVersion = fileVersion
     }
 }
 
 /// Turns file-system diffs from a `LibraryFolderWatching` into `Track` rows.
 /// All SwiftData work happens on this actor's own `ModelContext`.
-///
-/// `@ModelActor` synthesizes a `modelContainer`/`modelExecutor`-only
-/// `init(modelContainer:)`. To also store an `ArtworkStore`, `artwork` is
-/// declared as an `Optional` (so the macro's synthesized initializer, which
-/// doesn't know about it, still satisfies definite initialization) and the
-/// public initializer below sets up the macro's storage by hand alongside it.
-@ModelActor
-public actor LibraryIndexer {
+public actor LibraryIndexer: ModelActor {
+    public nonisolated let modelExecutor: any ModelExecutor
+    public nonisolated let modelContainer: ModelContainer
+
     private static let logger = Logger(subsystem: "OldPodKit.LibraryStore", category: "LibraryIndexer")
 
-    private var artwork: ArtworkStore?
+    private let artwork: ArtworkStore
     private var pathRevisions: [String: Int] = [:]
 
     public init(modelContainer: ModelContainer, artwork: ArtworkStore) {
-        let modelContext = ModelContext(modelContainer)
-        modelExecutor = DefaultSerialModelExecutor(modelContext: modelContext)
         self.modelContainer = modelContainer
+        modelExecutor = DefaultSerialModelExecutor(modelContext: ModelContext(modelContainer))
         self.artwork = artwork
     }
 
-    /// `reconcilingFullSnapshot`: pass true when `changes` is a watcher's
-    /// complete initial snapshot — every stored `Track` whose file is absent
-    /// from it gets deleted, so the store can never outlive the folder it
-    /// indexes (e.g. after a local → iCloud library-root switch).
+    /// Applies a batch of folder changes and returns every indexed path once
+    /// saved, or `nil` when the save failed. With `reconcilingFullSnapshot`,
+    /// `changes` is a watcher's complete snapshot and every `Track` whose
+    /// file is absent from it is deleted, so the store never outlives the
+    /// folder it indexes (as after a local → iCloud root switch).
     @discardableResult
-    public func apply(_ changes: [LibraryChange], reconcilingFullSnapshot: Bool = false) async -> Bool {
+    public func apply(_ changes: [LibraryChange], reconcilingFullSnapshot: Bool = false) async -> Set<String>? {
         for change in changes {
             switch change {
             case let .upsert(file):
@@ -80,20 +67,12 @@ public actor LibraryIndexer {
         }
         do {
             try modelContext.save()
+            return try Set(modelContext.fetch(FetchDescriptor<Track>()).map(\.relativePath))
         } catch {
-            // Same policy as PlaylistOps: never crash on a failed save, but
-            // leave a trail — a silently dropped batch looks like "my music
-            // didn't import" with nothing to diagnose.
+            // A silently dropped batch looks like "my music didn't import".
             Self.logger.error("Failed to save library index batch: \(error)")
-            return false
+            return nil
         }
-        return true
-    }
-
-    /// A Sendable snapshot used to confirm that a committed deletion batch
-    /// really removed its targets. Call only after `apply` reports success.
-    public func indexedRelativePaths() throws -> Set<String> {
-        try Set(modelContext.fetch(FetchDescriptor<Track>()).map(\.relativePath))
     }
 
     /// Commits metadata prepared from currently existing files. Refetching
@@ -103,17 +82,13 @@ public actor LibraryIndexer {
     public func applyMetadataRefreshes(_ refreshes: [LibraryMetadataRefresh]) -> Set<String> {
         var updated: Set<String> = []
         for refresh in refreshes {
-            guard currentFileVersion(at: refresh.url) == FileVersion(
-                size: refresh.fileSize,
-                modified: refresh.fileModified,
-                resourceIdentifier: refresh.fileResourceIdentifier
-            ) else { continue }
+            guard FileVersion.current(at: refresh.url) == refresh.fileVersion else { continue }
             let path = refresh.relativePath
             let descriptor = FetchDescriptor<Track>(predicate: #Predicate { $0.relativePath == path })
             guard let track = try? modelContext.fetch(descriptor).first else { continue }
             applyAuthoritative(refresh.metadata, relativePath: path, to: track)
-            track.fileSize = refresh.fileSize
-            track.fileModified = refresh.fileModified
+            track.fileSize = refresh.fileVersion.size
+            track.fileModified = refresh.fileVersion.modified
             track.isDownloaded = true
             updated.insert(path)
         }
@@ -148,21 +123,18 @@ public actor LibraryIndexer {
         // hasn't downloaded yet is indexed by filename alone, and picks up
         // its real metadata once `apply` sees it again with `isDownloaded`
         // flipped to `true`.
-        let versionBeforeRead = file.isDownloaded ? currentFileVersion(at: file.url) : nil
+        let versionBeforeRead = file.isDownloaded ? FileVersion.current(at: file.url) : nil
         let metadata = file.isDownloaded ? try? await MetadataReader.read(from: file.url) : nil
         guard pathRevisions[path] == revision else { return }
         if file.isDownloaded {
             guard let versionBeforeRead,
-                  versionBeforeRead == currentFileVersion(at: file.url),
+                  versionBeforeRead == FileVersion.current(at: file.url),
                   versionBeforeRead.size == file.size,
                   versionBeforeRead.modified == file.modified
             else { return }
         }
 
-        var artworkID: String?
-        if let data = metadata?.artwork {
-            artworkID = try? artwork?.store(data)
-        }
+        let artworkID = metadata?.artwork.flatMap { try? artwork.store($0) }
 
         if let existing {
             if let metadata {
@@ -224,7 +196,7 @@ public actor LibraryIndexer {
         track.year = metadata.year
         track.genre = metadata.genre
         if metadata.duration > 0, metadata.duration.isFinite { track.duration = metadata.duration }
-        if let data = metadata.artwork, let artworkID = try? artwork?.store(data) {
+        if let data = metadata.artwork, let artworkID = try? artwork.store(data) {
             track.artworkID = artworkID
         } else {
             track.artworkID = nil
@@ -236,25 +208,6 @@ public actor LibraryIndexer {
         if let existing = try? modelContext.fetch(descriptor).first {
             modelContext.delete(existing)
         }
-    }
-
-    private struct FileVersion: Equatable {
-        let size: Int64
-        let modified: Date
-        let resourceIdentifier: String?
-    }
-
-    private func currentFileVersion(at url: URL) -> FileVersion? {
-        let keys: Set<URLResourceKey> = [.fileSizeKey, .contentModificationDateKey, .fileResourceIdentifierKey]
-        guard let values = try? url.resourceValues(forKeys: keys),
-              let size = values.fileSize,
-              let modified = values.contentModificationDate
-        else { return nil }
-        return FileVersion(
-            size: Int64(size),
-            modified: modified,
-            resourceIdentifier: values.fileResourceIdentifier.map { String(describing: $0) }
-        )
     }
 
     private func bumpRevision(for path: String) -> Int {

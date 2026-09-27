@@ -68,7 +68,7 @@ private struct LibraryCommands: Commands {
     var body: some Commands {
         CommandMenu("Library") {
             Button("New Playlist") {
-                _ = PlaylistOps.create(name: "New Playlist", in: coordinator.container.mainContext)
+                coordinator.playlists.create(name: "New Playlist")
             }
             .keyboardShortcut("n", modifiers: .command)
 

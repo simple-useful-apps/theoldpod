@@ -16,20 +16,14 @@ import UniformTypeIdentifiers
 struct MacRootView: View {
     private let coordinator: LibraryCoordinator
 
-    @Environment(\.modelContext) private var modelContext
     @Query(sort: \Playlist.createdAt) private var playlists: [Playlist]
 
     @State private var selection: SidebarItem? = .songs
     @State private var playlistSearch = ""
 
-    @State private var playlistPendingRename: Playlist?
-    @State private var renameText = ""
+    @State private var rename: PlaylistRename?
     @State private var playlistPendingDelete: Playlist?
-
     @State private var isImporterPresented = false
-    @State private var isImporting = false
-    @State private var importProgress: ImportProgress?
-    @State private var importReport: String?
 
     init(coordinator: LibraryCoordinator) {
         self.coordinator = coordinator
@@ -57,15 +51,11 @@ struct MacRootView: View {
         .toolbar {
             ToolbarItem(placement: .automatic) { LibraryStatusButton(coordinator: coordinator) }
             ToolbarItem(placement: .automatic) {
-                if isImporting {
+                if coordinator.importer.isImporting {
                     HStack(spacing: 6) {
                         ProgressView()
                             .controlSize(.small)
-                        if let progress = importProgress {
-                            Text("\(progress.description) (\(progress.completed) of \(progress.total))")
-                                .lineLimit(1)
-                                .foregroundStyle(.secondary)
-                        }
+                        ImportProgressLabel(coordinator.importer)
                     }
                 }
             }
@@ -86,23 +76,13 @@ struct MacRootView: View {
             allowsMultipleSelection: true
         ) { result in
             if case let .success(urls) = result {
-                startImport(of: urls)
+                coordinator.importer.importFiles(at: urls)
             }
         }
         .dropDestination(for: URL.self) { urls, _ in
-            startImport(of: urls)
+            coordinator.importer.importFiles(at: urls)
         }
-        .alert(
-            "Import Finished with Issues",
-            isPresented: Binding(
-                get: { importReport != nil },
-                set: { if !$0 { importReport = nil } }
-            )
-        ) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(importReport ?? "")
-        }
+        .importReportAlert(coordinator.importer)
         .task {
             coordinator.start()
             SpacebarPlayPause.install(player: coordinator.player)
@@ -116,7 +96,8 @@ struct MacRootView: View {
     }
 
     private var sidebar: some View {
-        List(selection: $selection) {
+        let filteredPlaylists = playlists.filter { playlistSearch.isEmpty || $0.name.localizedStandardContains(playlistSearch) }
+        return List(selection: $selection) {
             Section("Library") {
                 Label("Songs", systemImage: "music.note").tag(SidebarItem.songs)
                 Label("Artists", systemImage: "music.mic").tag(SidebarItem.artists)
@@ -127,16 +108,16 @@ struct MacRootView: View {
                 TextField("Search Playlists", text: $playlistSearch)
                     .textFieldStyle(.roundedBorder)
                     .accessibilityLabel("Search Playlists")
-                ForEach(playlists.filter { playlistSearch.isEmpty || $0.name.localizedStandardContains(playlistSearch) }) { playlist in
+                ForEach(filteredPlaylists) { playlist in
                     Label(playlist.name, systemImage: "music.note.list")
                         .tag(SidebarItem.playlist(playlist.persistentModelID))
                         .contextMenu {
-                            Button("Rename\u{2026}") { beginRename(playlist) }
+                            Button("Rename\u{2026}") { rename = PlaylistRename(playlist) }
                             Divider()
                             Button("Delete", role: .destructive) { playlistPendingDelete = playlist }
                         }
                 }
-                if !playlistSearch.isEmpty, !playlists.contains(where: { $0.name.localizedStandardContains(playlistSearch) }) {
+                if !playlistSearch.isEmpty, filteredPlaylists.isEmpty {
                     Text("No matching playlists").foregroundStyle(.secondary)
                 }
             } header: {
@@ -155,40 +136,11 @@ struct MacRootView: View {
             }
         }
         .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 260)
-        .alert(
-            "Rename Playlist",
-            isPresented: Binding(
-                get: { playlistPendingRename != nil },
-                set: { if !$0 { playlistPendingRename = nil } }
-            )
-        ) {
-            TextField("Name", text: $renameText)
-            Button("Save") {
-                if let playlist = playlistPendingRename {
-                    PlaylistOps.rename(playlist, to: renameText, in: modelContext)
-                }
-                playlistPendingRename = nil
+        .playlistRenameAlert($rename, coordinator: coordinator)
+        .playlistDeleteConfirmation(for: $playlistPendingDelete, coordinator: coordinator) { deleted in
+            if selection == .playlist(deleted.persistentModelID) {
+                selection = .songs
             }
-            Button("Cancel", role: .cancel) {
-                playlistPendingRename = nil
-            }
-        }
-        .confirmationDialog(
-            "Delete Playlist?",
-            isPresented: Binding(
-                get: { playlistPendingDelete != nil },
-                set: { if !$0 { playlistPendingDelete = nil } }
-            ),
-            presenting: playlistPendingDelete
-        ) { playlist in
-            Button("Delete \u{201C}\(playlist.name)\u{201D}", role: .destructive) {
-                deletePlaylist(playlist)
-            }
-            Button("Cancel", role: .cancel) {
-                playlistPendingDelete = nil
-            }
-        } message: { _ in
-            Text("This can\u{2019}t be undone.")
         }
     }
 
@@ -223,40 +175,9 @@ struct MacRootView: View {
     // MARK: - Playlist sidebar actions
 
     private func createPlaylist() {
-        let playlist = PlaylistOps.create(name: "New Playlist", in: modelContext)
+        let playlist = coordinator.playlists.create(name: "New Playlist")
         selection = .playlist(playlist.persistentModelID)
-        beginRename(playlist)
-    }
-
-    private func beginRename(_ playlist: Playlist) {
-        renameText = playlist.name
-        playlistPendingRename = playlist
-    }
-
-    private func deletePlaylist(_ playlist: Playlist) {
-        if selection == .playlist(playlist.persistentModelID) {
-            selection = .songs
-        }
-        PlaylistOps.delete(playlist, in: modelContext)
-        playlistPendingDelete = nil
-    }
-
-    // MARK: - Import
-
-    private func startImport(of urls: [URL]) {
-        guard !urls.isEmpty, !isImporting else { return }
-        isImporting = true
-        Task {
-            let result = await ImportService(libraryRoot: coordinator.libraryRoot).importFiles(at: urls) { progress in
-                importProgress = progress
-            }
-            if !result.imported.isEmpty {
-                _ = await coordinator.refreshLibrary()
-            }
-            isImporting = false
-            importProgress = nil
-            importReport = result.report
-        }
+        rename = PlaylistRename(playlist)
     }
 }
 
@@ -274,46 +195,28 @@ private struct ArtistsDetailView: View {
     @State private var selectedArtistID: String?
     @State private var searchText = ""
 
+    private static func matches(_ artist: ArtistGroup, _ query: String) -> Bool {
+        artist.name.localizedStandardContains(query)
+    }
+
     var body: some View {
-        // Grouped once per body evaluation — reading a computed property from
-        // the empty-check, the List, AND the filter would regroup the whole
-        // library three times per render.
         let artists = LibraryGroups.artists(from: tracks)
         HSplitView {
-            VStack {
-                TextField("Search Artists", text: $searchText).textFieldStyle(.roundedBorder).padding([.horizontal, .top], 8)
-                    .onChange(of: searchText) { _, _ in selectedArtistID = nil }
-                if artists.isEmpty {
-                    ContentUnavailableView(
-                        "No Artists Yet",
-                        systemImage: "music.mic",
-                        description: Text("Drop music files into\n\(coordinator.libraryRoot.path)")
-                    )
-                } else {
-                    VStack {
-                        List(selection: $selectedArtistID) {
-                            ForEach(artists.filter { searchText.isEmpty || $0.name.localizedStandardContains(searchText) }) { artist in
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(artist.name)
-                                    Text(LibraryText.songCount(artist.trackCount))
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                .tag(artist.id)
-                            }
-                        }
-                        // UI tests: an artist name (e.g. "The Fixtures") also
-                        // appears verbatim in the Artist column of the
-                        // SongsTableView right beside this list, so a bare label
-                        // lookup for the row is ambiguous — this identifier lets
-                        // tests scope the query to just this list.
-                        .accessibilityIdentifier("artistsList")
-                        .overlay {
-                            if !searchText.isEmpty, !artists.contains(where: { $0.name.localizedStandardContains(searchText) }) {
-                                Text("No matching artists").foregroundStyle(.secondary)
-                            }
-                        }
-                    }
+            GroupPickerPane(
+                items: artists,
+                noun: "Artists",
+                emptySystemImage: "music.mic",
+                emptyDescription: "Drop music files into\n\(coordinator.libraryRoot.path)",
+                listIdentifier: "artistsList",
+                searchText: $searchText,
+                selectedID: $selectedArtistID,
+                matches: Self.matches
+            ) { artist in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(artist.name)
+                    Text(LibraryText.songCount(artist.trackCount))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
             .frame(minWidth: 200, idealWidth: 220, maxWidth: 300)
@@ -322,29 +225,17 @@ private struct ArtistsDetailView: View {
             // rather than A–Z by title.
             SongsTableView(
                 coordinator: coordinator,
-                filter: filter(artists: artists),
-                initialSortOrder: [
-                    KeyPathComparator(\.albumSortKey, order: .forward),
-                    KeyPathComparator(\.discNumber, order: .forward),
-                    KeyPathComparator(\.trackNumber, order: .forward),
-                ]
+                filter: GroupPickerPane<ArtistGroup, EmptyView>.trackFilter(
+                    items: artists,
+                    selectedID: selectedArtistID,
+                    searchText: searchText,
+                    matches: Self.matches,
+                    trackIDs: { $0.albums.flatMap(\.trackIDs) }
+                ),
+                initialSortOrder: SongsTableView.albumOrder
             )
             .frame(minWidth: 320)
         }
-    }
-
-    /// nil selection = all tracks; otherwise every track belonging to any of
-    /// the selected artist's albums.
-    private func filter(artists: [ArtistGroup]) -> (Track) -> Bool {
-        guard let selectedArtistID, let group = artists.first(where: { $0.id == selectedArtistID }) else {
-            if !searchText.isEmpty {
-                let ids = Set(artists.filter { $0.name.localizedStandardContains(searchText) }.flatMap(\.albums).flatMap(\.trackIDs))
-                return { ids.contains($0.persistentModelID) }
-            }
-            return { _ in true }
-        }
-        let ids = Set(group.albums.flatMap(\.trackIDs))
-        return { ids.contains($0.persistentModelID) }
     }
 }
 
@@ -357,48 +248,33 @@ private struct AlbumsDetailView: View {
     @State private var selectedAlbumID: String?
     @State private var searchText = ""
 
+    private static func matches(_ album: AlbumGroup, _ query: String) -> Bool {
+        album.title.localizedStandardContains(query) || album.artistName.localizedStandardContains(query)
+    }
+
     var body: some View {
-        // Grouped once per body evaluation (see ArtistsDetailView).
         let albums = LibraryGroups.albums(from: tracks)
         HSplitView {
-            VStack {
-                TextField("Search Albums", text: $searchText).textFieldStyle(.roundedBorder).padding([.horizontal, .top], 8)
-                    .onChange(of: searchText) { _, _ in selectedAlbumID = nil }
-                if albums.isEmpty {
-                    ContentUnavailableView(
-                        "No Albums Yet",
-                        systemImage: "square.stack",
-                        description: Text("Drop music files into\n\(coordinator.libraryRoot.path)")
-                    )
-                } else {
-                    VStack {
-                        List(selection: $selectedAlbumID) {
-                            ForEach(albums.filter { searchText.isEmpty || $0.title.localizedStandardContains(searchText) || $0.artistName.localizedStandardContains(searchText) }) { album in
-                                HStack(spacing: 8) {
-                                    ArtworkImage(artworkID: album.artworkID, directory: coordinator.artworkDirectory, pointSize: 56)
-                                        .frame(width: 56, height: 56)
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(album.title)
-                                            .lineLimit(1)
-                                        Text(album.artistName)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                            .lineLimit(1)
-                                    }
-                                }
-                                .tag(album.id)
-                            }
-                        }
-                        // UI tests: an album title (e.g. "Covered") also appears
-                        // verbatim in the Album column of the SongsTableView
-                        // right beside this list — see the matching comment on
-                        // `artistsList` above.
-                        .accessibilityIdentifier("albumsList")
-                        .overlay {
-                            if !searchText.isEmpty, !albums.contains(where: { $0.title.localizedStandardContains(searchText) || $0.artistName.localizedStandardContains(searchText) }) {
-                                Text("No matching albums").foregroundStyle(.secondary)
-                            }
-                        }
+            GroupPickerPane(
+                items: albums,
+                noun: "Albums",
+                emptySystemImage: "square.stack",
+                emptyDescription: "Drop music files into\n\(coordinator.libraryRoot.path)",
+                listIdentifier: "albumsList",
+                searchText: $searchText,
+                selectedID: $selectedAlbumID,
+                matches: Self.matches
+            ) { album in
+                HStack(spacing: 8) {
+                    ArtworkImage(artworkID: album.artworkID, directory: coordinator.artworkDirectory, pointSize: 56)
+                        .frame(width: 56, height: 56)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(album.title)
+                            .lineLimit(1)
+                        Text(album.artistName)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
                     }
                 }
             }
@@ -409,29 +285,16 @@ private struct AlbumsDetailView: View {
 
             SongsTableView(
                 coordinator: coordinator,
-                filter: filter(albums: albums),
-                // Album first: with no album selected, disc/track alone
-                // interleaved every album's track 1s, then its 2s, ...
-                initialSortOrder: [
-                    KeyPathComparator(\.albumSortKey, order: .forward),
-                    KeyPathComparator(\.discNumber, order: .forward),
-                    KeyPathComparator(\.trackNumber, order: .forward),
-                ]
+                filter: GroupPickerPane<AlbumGroup, EmptyView>.trackFilter(
+                    items: albums,
+                    selectedID: selectedAlbumID,
+                    searchText: searchText,
+                    matches: Self.matches,
+                    trackIDs: \.trackIDs
+                ),
+                initialSortOrder: SongsTableView.albumOrder
             )
             .frame(minWidth: 320)
         }
-    }
-
-    /// nil selection = all tracks; otherwise just the selected album's tracks.
-    private func filter(albums: [AlbumGroup]) -> (Track) -> Bool {
-        guard let selectedAlbumID, let group = albums.first(where: { $0.id == selectedAlbumID }) else {
-            if !searchText.isEmpty {
-                let ids = Set(albums.filter { $0.title.localizedStandardContains(searchText) || $0.artistName.localizedStandardContains(searchText) }.flatMap(\.trackIDs))
-                return { ids.contains($0.persistentModelID) }
-            }
-            return { _ in true }
-        }
-        let ids = Set(group.trackIDs)
-        return { ids.contains($0.persistentModelID) }
     }
 }

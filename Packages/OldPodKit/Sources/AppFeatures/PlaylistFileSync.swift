@@ -5,13 +5,13 @@ import os
 import SwiftData
 
 /// Keeps `.m3u8` files under `<libraryRoot>/Playlists` and the SwiftData
-/// `Playlist`/`PlaylistEntry` rows in sync, in both directions: `PlaylistOps`
+/// `Playlist`/`PlaylistEntry` rows in sync, in both directions: `PlaylistStore`
 /// calls the `playlistChanged`/`playlistDeleted`/`playlistRenamed` hooks
 /// after every mutation to push SwiftData -> files, and `reconcile()` (run at
 /// startup and on every folder-watcher event) pulls files -> SwiftData so
 /// external edits (Finder, another app, iCloud sync from another device)
-/// take effect. Files are the source of truth per `CLAUDE.md` — SwiftData is
-/// always rebuildable from them.
+/// take effect. Files are the source of truth; SwiftData is always
+/// rebuildable from them.
 @MainActor
 public final class PlaylistFileSync {
     private let store: PlaylistFileStore
@@ -30,13 +30,10 @@ public final class PlaylistFileSync {
         watcher = PlaylistFolderWatcher(directory: store.directory)
     }
 
-    /// One-time migration for users who created playlists before playlist
-    /// files existed: exports every SwiftData playlist to a file, unless a
-    /// file with that name is already there (files win — this only fills in
-    /// gaps, it never overwrites). Guarded by a `UserDefaults` flag so it
-    /// runs exactly once per install; after that, files are the sole truth
-    /// and `reconcile()` would otherwise delete a v1 user's playlists on
-    /// this build's first launch, since none of them have files yet.
+    /// One-time migration for playlists created before playlist files
+    /// existed: writes a file for every playlist that has none (existing
+    /// files win), then reconciles. Without it, `reconcile()` would delete
+    /// every pre-file playlist on first launch.
     public func migrateAndReconcile() {
         if !defaults.bool(forKey: Self.exportedV1DefaultsKey) {
             let context = container.mainContext
@@ -70,20 +67,14 @@ public final class PlaylistFileSync {
         watchTask = nil
     }
 
-    /// Makes SwiftData match the files on disk: playlists whose name no
-    /// longer has a file are deleted; files with no matching playlist create
-    /// one; files whose entries differ from the matching playlist's replace
-    /// that playlist's entries wholesale, renumbered `0..n`. Titles/seconds
-    /// stored in the file are advisory display data only — never trusted on
-    /// import, since the `Track` rows are the real source for those.
+    /// Makes SwiftData match the files on disk: playlists without a file are
+    /// deleted, files without a playlist create one, and differing entries
+    /// are replaced wholesale. Titles and durations in the file are display
+    /// hints only; the `Track` rows are authoritative.
     ///
-    /// Deliberately performs no file writes, so a reconcile triggered by the
-    /// watcher picking up our *own* write is a no-op rather than a
-    /// write-back loop. One consequence: renaming a file externally (rather
-    /// than through the app) reads as delete-then-create — the "renamed"
-    /// playlist gets a new `createdAt` and loses continuity with the old
-    /// one. That's accepted; the on-disk filename is the only identity a
-    /// plain file rename can express.
+    /// Never writes files, so a reconcile triggered by our own write is a
+    /// no-op rather than a write-back loop. A file renamed outside the app
+    /// therefore reads as delete-then-create.
     public func reconcile() {
         let context = container.mainContext
         // An unavailable iCloud file or directory is not an empty library.
@@ -109,7 +100,7 @@ public final class PlaylistFileSync {
         for (name, fileEntries) in files {
             let trackPaths = fileEntries.map(\.trackPath)
             if let existing = survivingByName[name] {
-                let currentPaths = PlaylistOps.sortedEntries(of: existing).map(\.trackPath)
+                let currentPaths = existing.sortedEntries.map(\.trackPath)
                 guard currentPaths != trackPaths else { continue }
                 for entry in existing.entries {
                     context.delete(entry)
@@ -129,7 +120,7 @@ public final class PlaylistFileSync {
         save(context)
     }
 
-    // MARK: - Write hooks (called by `PlaylistOps` after each mutation)
+    // MARK: - Write hooks (called by `PlaylistStore` after each mutation)
 
     func playlistChanged(_ playlist: Playlist, in context: ModelContext) {
         store.write(name: playlist.name, entries: serialize(playlist, in: context))
@@ -152,12 +143,10 @@ public final class PlaylistFileSync {
 
     // MARK: - Helpers
 
-    /// Resolves `playlist`'s entries to `PlaylistFileEntry` values for
-    /// export. Unlike `PlaylistOps.resolveTracks`, dangling entries (no
-    /// matching `Track`) are kept rather than skipped, since the file format
-    /// needs to preserve every entry to round-trip correctly.
+    /// Every entry, including ones whose track is gone, so the file
+    /// round-trips completely.
     private func serialize(_ playlist: Playlist, in context: ModelContext) -> [PlaylistFileEntry] {
-        PlaylistOps.sortedEntries(of: playlist).map { entry in
+        playlist.sortedEntries.map { entry in
             let path = entry.trackPath
             let descriptor = FetchDescriptor<Track>(predicate: #Predicate { $0.relativePath == path })
             if let track = try? context.fetch(descriptor).first {

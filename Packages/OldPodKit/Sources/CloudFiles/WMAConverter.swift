@@ -23,7 +23,7 @@
         private let fileManager = FileManager.default
 
         func convert(_ source: URL) async throws -> WMAConversion {
-            guard let helperURL = Self.helperURL else { throw WMAConversionError.helperMissing }
+            guard let helperURL = FFmpegHelper.url else { throw WMAConversionError.helperMissing }
 
             let temporaryDirectory = fileManager.temporaryDirectory
                 .appendingPathComponent("TheOldPod-WMA-\(UUID().uuidString)", isDirectory: true)
@@ -33,19 +33,13 @@
                 try fileManager.copyItem(at: source, to: stagedInput)
                 let output = temporaryDirectory.appendingPathComponent("output.m4a")
                 do {
-                    try await run(helperURL, input: stagedInput, output: output, includeArtwork: true)
-                    try Task.checkCancellation()
-                    try await validate(output)
-                    try Task.checkCancellation()
+                    try await convert(helperURL, input: stagedInput, output: output, includeArtwork: true)
                     return WMAConversion(outputURL: output, temporaryDirectory: temporaryDirectory, warnings: [])
                 } catch let firstError {
                     if firstError is CancellationError { throw firstError }
                     try? fileManager.removeItem(at: output)
                     do {
-                        try await run(helperURL, input: stagedInput, output: output, includeArtwork: false)
-                        try Task.checkCancellation()
-                        try await validate(output)
-                        try Task.checkCancellation()
+                        try await convert(helperURL, input: stagedInput, output: output, includeArtwork: false)
                         return WMAConversion(
                             outputURL: output,
                             temporaryDirectory: temporaryDirectory,
@@ -79,29 +73,8 @@
             }
         }
 
-        private static var helperURL: URL? {
-            #if DEBUG
-                if let override = ProcessInfo.processInfo.environment["OLDPOD_WMA_HELPER"], !override.isEmpty {
-                    return URL(fileURLWithPath: override)
-                }
-            #endif
-            guard let executable = Bundle.main.executableURL else { return nil }
-            let helper = executable.deletingLastPathComponent()
-                .appendingPathComponent("../Helpers/TheOldPodWMAConverter").standardizedFileURL
-            return FileManager.default.isExecutableFile(atPath: helper.path) ? helper : nil
-        }
-
-        private func run(_ helper: URL, input: URL, output: URL, includeArtwork: Bool) async throws {
-            try Task.checkCancellation()
-            let logURL = input.deletingLastPathComponent().appendingPathComponent("converter.log")
-            fileManager.createFile(atPath: logURL.path, contents: nil)
-            let log = try FileHandle(forWritingTo: logURL)
-            defer { try? log.close() }
-
-            let process = Process()
-            process.executableURL = helper
-            process.arguments = [
-                "-nostdin", "-hide_banner", "-loglevel", "error", "-y",
+        private func convert(_ helper: URL, input: URL, output: URL, includeArtwork: Bool) async throws {
+            let arguments = [
                 "-i", input.path,
                 "-map", "0:a:0",
             ] + (includeArtwork ? ["-map", "0:v?", "-c:v", "copy"] : ["-vn"]) + [
@@ -111,30 +84,15 @@
                 "-f", "mp4",
                 output.path,
             ]
-            process.standardOutput = log
-            process.standardError = log
-
-            let box = ProcessBox(process)
-            try await withTaskCancellationHandler {
-                try await withCheckedThrowingContinuation { continuation in
-                    process.terminationHandler = { _ in continuation.resume() }
-                    do {
-                        try process.run()
-                        if Task.isCancelled { process.terminate() }
-                    } catch {
-                        process.terminationHandler = nil
-                        continuation.resume(throwing: error)
-                    }
-                }
-                try Task.checkCancellation()
-                guard process.terminationStatus == 0 else {
-                    let detail = (try? String(contentsOf: logURL, encoding: .utf8))?
-                        .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                    throw WMAConversionError.conversionFailed(Self.friendlyFailure(detail))
-                }
-            } onCancel: {
-                box.terminate()
+            let logURL = input.deletingLastPathComponent().appendingPathComponent("converter.log")
+            do {
+                try await FFmpegHelper.run(helper, arguments: arguments, logURL: logURL)
+            } catch let failure as FFmpegHelper.Failure {
+                throw WMAConversionError.conversionFailed(Self.friendlyFailure(failure.log))
             }
+            try Task.checkCancellation()
+            try await validate(output)
+            try Task.checkCancellation()
         }
 
         private func validate(_ output: URL) async throws {
@@ -160,18 +118,6 @@
                 return "This WMA file appears to be DRM-protected and cannot be imported."
             }
             return "The WMA file could not be converted. It may be damaged or DRM-protected."
-        }
-    }
-
-    private final class ProcessBox: @unchecked Sendable {
-        private let process: Process
-
-        init(_ process: Process) {
-            self.process = process
-        }
-
-        func terminate() {
-            if process.isRunning { process.terminate() }
         }
     }
 #endif

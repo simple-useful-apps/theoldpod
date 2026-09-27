@@ -5,12 +5,6 @@ import Foundation
 import SwiftData
 import Testing
 
-/// `PlaylistOps.fileSync` is a static var shared by every `@MainActor` test
-/// in this suite (and `PlaylistOpsTests`), and Swift Testing runs tests in
-/// this file in parallel. Each test below sets it, does only *synchronous*
-/// work (no `await` in between — parallel `@MainActor` tests only interleave
-/// at suspension points), then clears it before returning, so no other test
-/// ever observes a stray value.
 @MainActor
 struct PlaylistFileSyncTests {
     @Test func opsWriteFileAfterEachMutation() throws {
@@ -29,10 +23,10 @@ struct PlaylistFileSyncTests {
         context.insert(trackA)
         context.insert(trackB)
 
-        PlaylistOps.fileSync = sync
-        let playlist = PlaylistOps.create(name: "Road Trip", in: context)
-        PlaylistOps.add(trackA, to: playlist, in: context)
-        PlaylistOps.add(trackB, to: playlist, in: context)
+        let playlistStore = PlaylistStore(context: context, files: sync)
+        let playlist = playlistStore.create(name: "Road Trip")
+        playlistStore.add(trackA, to: playlist)
+        playlistStore.add(trackB, to: playlist)
 
         let fileURL = directory.appendingPathComponent("Road Trip.m3u8")
         let text = try String(contentsOf: fileURL, encoding: .utf8)
@@ -41,12 +35,10 @@ struct PlaylistFileSyncTests {
         #expect(text.contains("#EXTINF:200,Song B"))
         #expect(text.contains("b.mp3"))
 
-        PlaylistOps.removeEntries(at: IndexSet([0]), from: playlist, in: context)
+        playlistStore.removeEntries(at: IndexSet([0]), from: playlist)
         let updatedText = try String(contentsOf: fileURL, encoding: .utf8)
         #expect(!updatedText.contains("a.mp3"))
         #expect(updatedText.contains("b.mp3"))
-
-        PlaylistOps.fileSync = nil
     }
 
     @Test func renameMovesFile() throws {
@@ -60,17 +52,15 @@ struct PlaylistFileSyncTests {
         let store = PlaylistFileStore(directory: directory)
         let sync = PlaylistFileSync(store: store, container: container, defaults: defaults)
 
-        PlaylistOps.fileSync = sync
-        let playlist = PlaylistOps.create(name: "Old Name", in: context)
+        let playlistStore = PlaylistStore(context: context, files: sync)
+        let playlist = playlistStore.create(name: "Old Name")
         let oldURL = directory.appendingPathComponent("Old Name.m3u8")
         #expect(FileManager.default.fileExists(atPath: oldURL.path))
 
-        PlaylistOps.rename(playlist, to: "New Name", in: context)
+        playlistStore.rename(playlist, to: "New Name")
         let newURL = directory.appendingPathComponent("New Name.m3u8")
         #expect(FileManager.default.fileExists(atPath: newURL.path))
         #expect(!FileManager.default.fileExists(atPath: oldURL.path))
-
-        PlaylistOps.fileSync = nil
     }
 
     @Test func deleteRemovesFile() throws {
@@ -84,15 +74,13 @@ struct PlaylistFileSyncTests {
         let store = PlaylistFileStore(directory: directory)
         let sync = PlaylistFileSync(store: store, container: container, defaults: defaults)
 
-        PlaylistOps.fileSync = sync
-        let playlist = PlaylistOps.create(name: "Doomed", in: context)
+        let playlistStore = PlaylistStore(context: context, files: sync)
+        let playlist = playlistStore.create(name: "Doomed")
         let url = directory.appendingPathComponent("Doomed.m3u8")
         #expect(FileManager.default.fileExists(atPath: url.path))
 
-        PlaylistOps.delete(playlist, in: context)
+        playlistStore.delete(playlist)
         #expect(!FileManager.default.fileExists(atPath: url.path))
-
-        PlaylistOps.fileSync = nil
     }
 
     @Test func roundTripSurvivesStoreWipe() throws {
@@ -109,16 +97,15 @@ struct PlaylistFileSyncTests {
         let trackA = makeTrack("a.mp3")
         contextA.insert(trackA)
 
-        PlaylistOps.fileSync = syncA
-        let playlist = PlaylistOps.create(name: "Mix", in: contextA)
-        PlaylistOps.add(trackA, to: playlist, in: contextA)
-        // A dangling entry inserted directly (bypassing PlaylistOps, which
+        let playlistStore = PlaylistStore(context: contextA, files: syncA)
+        let playlist = playlistStore.create(name: "Mix")
+        playlistStore.add(trackA, to: playlist)
+        // A dangling entry inserted directly (bypassing PlaylistStore, which
         // has no "point at a path with no Track" API), then a no-op reorder
         // to force a fresh export that picks it up as dangling.
         contextA.insert(PlaylistEntry(position: 1, trackPath: "missing.mp3", playlist: playlist))
         try contextA.save()
-        PlaylistOps.moveEntries(from: IndexSet(), to: 0, in: playlist, in: contextA)
-        PlaylistOps.fileSync = nil
+        playlistStore.moveEntries(from: IndexSet(), to: 0, in: playlist)
 
         // Fresh in-memory container, as if the app were reinstalled: the
         // files on disk are the only surviving state. The migration flag is
@@ -132,7 +119,7 @@ struct PlaylistFileSyncTests {
         let contextB = containerB.mainContext
         let playlistsB = try contextB.fetch(FetchDescriptor<Playlist>())
         #expect(playlistsB.map(\.name) == ["Mix"])
-        let entriesB = PlaylistOps.sortedEntries(of: playlistsB[0])
+        let entriesB = playlistsB[0].sortedEntries
         #expect(entriesB.map(\.trackPath) == ["a.mp3", "missing.mp3"])
     }
 
@@ -152,11 +139,10 @@ struct PlaylistFileSyncTests {
         context.insert(trackA)
         context.insert(trackB)
 
-        PlaylistOps.fileSync = sync
-        let playlist = PlaylistOps.create(name: "Mix", in: context)
-        PlaylistOps.add(trackA, to: playlist, in: context)
-        PlaylistOps.add(trackB, to: playlist, in: context)
-        PlaylistOps.fileSync = nil
+        let playlistStore = PlaylistStore(context: context, files: sync)
+        let playlist = playlistStore.create(name: "Mix")
+        playlistStore.add(trackA, to: playlist)
+        playlistStore.add(trackB, to: playlist)
 
         // Hand-edit the file as if a user reordered it (or another app
         // wrote it): reversed order, plus a path with no matching Track.
@@ -169,7 +155,7 @@ struct PlaylistFileSyncTests {
 
         let playlists = try context.fetch(FetchDescriptor<Playlist>())
         #expect(playlists.count == 1)
-        #expect(PlaylistOps.sortedEntries(of: playlists[0]).map(\.trackPath) == ["b.mp3", "c.mp3"])
+        #expect(playlists[0].sortedEntries.map(\.trackPath) == ["b.mp3", "c.mp3"])
     }
 
     @Test func newFileCreatesPlaylist() throws {
@@ -187,7 +173,7 @@ struct PlaylistFileSyncTests {
 
         let playlists = try container.mainContext.fetch(FetchDescriptor<Playlist>())
         #expect(playlists.map(\.name) == ["External"])
-        #expect(PlaylistOps.sortedEntries(of: playlists[0]).map(\.trackPath) == ["x.mp3"])
+        #expect(playlists[0].sortedEntries.map(\.trackPath) == ["x.mp3"])
     }
 
     @Test func missingFileDeletesPlaylist() throws {
@@ -201,9 +187,8 @@ struct PlaylistFileSyncTests {
         let store = PlaylistFileStore(directory: directory)
         let sync = PlaylistFileSync(store: store, container: container, defaults: defaults)
 
-        PlaylistOps.fileSync = sync
-        let playlist = PlaylistOps.create(name: "ToRemove", in: context)
-        PlaylistOps.fileSync = nil
+        let playlistStore = PlaylistStore(context: context, files: sync)
+        let playlist = playlistStore.create(name: "ToRemove")
 
         _ = playlist
         try FileManager.default.removeItem(at: directory.appendingPathComponent("ToRemove.m3u8"))
@@ -228,7 +213,7 @@ struct PlaylistFileSyncTests {
 
         let playlists = try container.mainContext.fetch(FetchDescriptor<Playlist>())
         #expect(playlists.count == 1)
-        #expect(PlaylistOps.sortedEntries(of: playlists[0]).map(\.trackPath) == ["nope/missing.mp3"])
+        #expect(playlists[0].sortedEntries.map(\.trackPath) == ["nope/missing.mp3"])
     }
 
     @Test func migrationExportsExistingPlaylistsOnce() throws {

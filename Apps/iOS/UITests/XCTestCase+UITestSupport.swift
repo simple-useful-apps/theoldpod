@@ -7,6 +7,13 @@ import XCTest
 /// a test do persist across launches on disk, which is why playlist tests
 /// clean up after themselves.
 extension XCTestCase {
+    /// A row of the visible list. The mini player shows the current track's
+    /// title and artist on every screen, so an app-wide text lookup for a
+    /// song or artist name is ambiguous once something has played.
+    func listText(_ app: XCUIApplication, _ label: String) -> XCUIElement {
+        app.cells.staticTexts[label]
+    }
+
     /// The default per-assertion wait: generous enough to absorb simulator
     /// slowness without ever masking a real hang with a bare `sleep`.
     static let uiTimeout: TimeInterval = 10

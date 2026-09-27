@@ -33,26 +33,6 @@ public final class NowPlayingBridge {
         pushNowPlayingInfo()
     }
 
-    /// No production caller today — the bridge lives for the whole process.
-    /// Kept as the symmetric teardown for tests and any future lifecycle.
-    public func deactivate() {
-        guard isActive else { return }
-        isActive = false
-
-        let commandCenter = MPRemoteCommandCenter.shared()
-        commandCenter.playCommand.removeTarget(nil)
-        commandCenter.pauseCommand.removeTarget(nil)
-        commandCenter.togglePlayPauseCommand.removeTarget(nil)
-        commandCenter.nextTrackCommand.removeTarget(nil)
-        commandCenter.previousTrackCommand.removeTarget(nil)
-        commandCenter.changePlaybackPositionCommand.removeTarget(nil)
-        commandCenter.skipBackwardCommand.removeTarget(nil)
-        commandCenter.skipForwardCommand.removeTarget(nil)
-        commandCenter.changePlaybackRateCommand.removeTarget(nil)
-
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
-    }
-
     private func registerCommandHandlers() {
         let commandCenter = MPRemoteCommandCenter.shared()
 
@@ -109,14 +89,11 @@ public final class NowPlayingBridge {
         }
     }
 
-    /// Re-arming `withObservationTracking` pattern, but the tracked scope
-    /// deliberately reads only DISCONTINUITY signals — current track,
-    /// play/pause state, and seekCount — NOT `currentTime`. The system
-    /// extrapolates elapsed time from PlaybackRate + one ElapsedPlaybackTime
-    /// timestamp, so re-pushing the whole info dict (an XPC write to
-    /// mediaserverd) on every 0.5s tick is pure waste; `pushNowPlayingInfo()`
-    /// runs OUTSIDE the tracked closure so its `currentTime` read registers
-    /// no dependency. `isActive` stops the loop after `deactivate()`.
+    /// Re-arming observation over the discontinuity signals only (track,
+    /// play state, seeks), never `currentTime`: the system extrapolates
+    /// elapsed time from the rate and one timestamp, so pushing the info
+    /// dictionary on every half-second tick would be wasted XPC traffic.
+    /// `pushNowPlayingInfo()` reads `currentTime` outside the tracked scope.
     private func scheduleNowPlayingInfoUpdate() {
         guard isActive else { return }
         withObservationTracking {

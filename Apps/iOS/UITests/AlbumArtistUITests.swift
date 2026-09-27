@@ -18,17 +18,19 @@ final class AlbumArtistUITests: XCTestCase {
         albumCell.tap()
 
         assertExists(app.navigationBars["Test Tones"])
-        assertExists(app.staticTexts["Fixture One"], "Test Tones should contain Fixture One")
-        assertExists(app.staticTexts["Fixture Two"], "Test Tones should contain Fixture Two")
-        XCTAssertFalse(app.staticTexts["Fixture Three"].exists, "Test Tones should not contain Fixture Three")
-        assertExists(app.staticTexts["1"], "track 1 should show its track number")
-        assertExists(app.staticTexts["2"], "track 2 should show its track number")
+        assertExists(listText(app, "Fixture One"), "Test Tones should contain Fixture One")
+        assertExists(listText(app, "Fixture Two"), "Test Tones should contain Fixture Two")
+        XCTAssertFalse(listText(app, "Fixture Three").exists, "Test Tones should not contain Fixture Three")
+        // The current track shows a speaker in place of its number, and the
+        // last session is restored at launch, so only one number is certain.
+        let numbers = app.staticTexts.matching(NSPredicate(format: "label IN %@", ["1", "2"]))
+        assertExists(numbers.firstMatch, "tracks should show their track numbers")
         attachScreenshot(app, name: "album-detail-test-tones")
 
         // Not `app.buttons["Play"]`: the always-present (if disabled)
         // mini-player transport button shares that label whenever nothing
         // is queued yet, making a plain label lookup ambiguous.
-        app.buttons["albumPlayButton"].tap()
+        app.buttons["playButton"].tap()
 
         let miniBarTitle = app.staticTexts["miniPlayerTitle"]
         assertExists(miniBarTitle, "Play should start at track 1, Fixture One")
@@ -44,18 +46,18 @@ final class AlbumArtistUITests: XCTestCase {
         app.launch()
 
         app.tabBars.buttons["Artists"].tap()
-        let artistRow = app.staticTexts["The Fixtures"]
+        let artistRow = listText(app, "The Fixtures")
         assertExists(artistRow)
         artistRow.tap()
 
         assertExists(app.navigationBars["The Fixtures"])
-        let albumRow = app.staticTexts["Test Tones"]
+        let albumRow = listText(app, "Test Tones")
         assertExists(albumRow, "The Fixtures artist screen should list Test Tones")
         albumRow.tap()
 
         assertExists(app.navigationBars["Test Tones"])
-        assertExists(app.staticTexts["Fixture One"])
-        assertExists(app.staticTexts["Fixture Two"])
+        assertExists(listText(app, "Fixture One"))
+        assertExists(listText(app, "Fixture Two"))
         attachScreenshot(app, name: "artist-to-album-detail")
     }
 
@@ -69,7 +71,7 @@ final class AlbumArtistUITests: XCTestCase {
         albumCell.tap()
         assertExists(app.navigationBars["Test Tones"])
 
-        app.buttons["albumShuffleButton"].tap()
+        app.buttons["shuffleButton"].tap()
 
         let playPauseButton = app.buttons["miniPlayerPlayPauseButton"]
         assertExists(playPauseButton, "shuffle should start playback")

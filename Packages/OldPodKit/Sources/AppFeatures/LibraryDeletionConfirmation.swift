@@ -77,16 +77,13 @@ private struct LibraryDeletionConfirmationModifier: ViewModifier {
     @Binding var request: LibraryDeletionRequest?
     let coordinator: LibraryCoordinator
     let onCompletion: (LibraryDeletionCompletion) -> Void
-    @State private var errorMessage: String?
+    @State private var problem: DeletionProblem?
 
     func body(content: Content) -> some View {
         content
             .confirmationDialog(
                 request?.title ?? "Delete Library Item?",
-                isPresented: Binding(
-                    get: { request != nil },
-                    set: { if !$0 { request = nil } }
-                ),
+                isPresented: $request.isPresent,
                 titleVisibility: .visible,
                 presenting: request
             ) { pending in
@@ -98,16 +95,10 @@ private struct LibraryDeletionConfirmationModifier: ViewModifier {
             } message: { pending in
                 Text(pending.explanation(isCloudLibrary: coordinator.isCloudLibrary))
             }
-            .alert(
-                resultAlertTitle,
-                isPresented: Binding(
-                    get: { errorMessage != nil },
-                    set: { if !$0 { errorMessage = nil } }
-                )
-            ) {
+            .alert(problem?.title ?? "", isPresented: $problem.isPresent, presenting: problem) { _ in
                 Button("OK", role: .cancel) {}
-            } message: {
-                Text(errorMessage ?? "")
+            } message: { problem in
+                Text(problem.message)
             }
     }
 
@@ -120,27 +111,34 @@ private struct LibraryDeletionConfirmationModifier: ViewModifier {
             await coordinator.deleteBook(named: name)
         }
         onCompletion(.init(request: pending, result: result))
-        if !result.failures.isEmpty || result.postDeletionWarning != nil {
-            errorMessage = [
-                result.failures.isEmpty ? nil : failureMessage(for: result),
-                result.postDeletionWarning,
-            ].compactMap(\.self).joined(separator: "\n\n")
+        problem = DeletionProblem(result: result)
+    }
+}
+
+private struct DeletionProblem {
+    let title: String
+    let message: String
+
+    init?(result: LibraryDeletionResult) {
+        switch (result.failures.isEmpty, result.postDeletionWarning) {
+        case (true, nil):
+            return nil
+        case let (true, warning?):
+            title = "Deleted, But Refresh Was Incomplete"
+            message = warning
+        case let (false, warning):
+            title = "Some Items Couldn’t Be Deleted"
+            message = [Self.failureSummary(result), warning].compactMap(\.self).joined(separator: "\n\n")
         }
     }
 
-    private var resultAlertTitle: String {
-        errorMessage?.hasPrefix("The selected files were moved to Trash") == true
-            ? "Deleted, But Refresh Was Incomplete"
-            : "Some Items Couldn’t Be Deleted"
-    }
-
-    private func failureMessage(for result: LibraryDeletionResult) -> String {
+    private static func failureSummary(_ result: LibraryDeletionResult) -> String {
         var parts: [String] = []
         if !result.successfulTargets.isEmpty {
-            parts.append("\(result.successfulTargets.count) item\(result.successfulTargets.count == 1 ? " was" : "s were") moved to Trash.")
+            parts.append(LibraryText.itemCount(result.successfulTargets.count, verb: "moved to Trash"))
         }
         if !result.alreadyMissingTargets.isEmpty {
-            parts.append("\(result.alreadyMissingTargets.count) item\(result.alreadyMissingTargets.count == 1 ? " was" : "s were") already missing.")
+            parts.append(LibraryText.itemCount(result.alreadyMissingTargets.count, verb: "already missing"))
         }
         parts.append(contentsOf: result.failures.map { "\($0.target): \($0.message)" })
         return parts.joined(separator: "\n")

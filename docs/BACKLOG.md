@@ -31,9 +31,7 @@ Known items deliberately deferred from v1, mostly surfaced by the M6 full-codeba
 ## Cleanup
 
 - Artwork filename pattern `"\(id).img"` is inlined in ArtworkStore, NowPlayingBridge, and the artwork thumbnail loader — acceptable duplication until the naming ever changes; a shared helper needs a cross-module home first.
-- "N songs · duration" header line duplicated across album/playlist headers (iOS + Mac).
-- `PlayQueue.jump(to:)` has no UI caller yet — kept for the future queue screen.
-- `NowPlayingBridge.deactivate()` / `LibraryCoordinator.stop()` have no callers (coordinator is a process-lifetime singleton); wire them up if a teardown path ever exists.
+- A future "Up Next" queue screen needs a `PlayQueue.jump(to:)`; the earlier unused one was removed in the code-review cleanup.
 
 ## Product (post-v1, per GOAL.md non-goals)
 

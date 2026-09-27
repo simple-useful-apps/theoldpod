@@ -14,4 +14,8 @@ public final class Playlist {
         self.createdAt = createdAt
         self.entries = entries
     }
+
+    public var sortedEntries: [PlaylistEntry] {
+        entries.sorted { $0.position < $1.position }
+    }
 }

@@ -4,67 +4,24 @@ import PlaybackEngine
 import SwiftData
 import SwiftUI
 
-/// A single playlist's detail screen: entries in playlist order, each
-/// resolved to its `Track` by `trackPath`. Entries whose file has since
-/// disappeared render as dangling rows rather than being silently dropped,
-/// so reordering/removal still lines up with what the user sees. Play and
-/// Shuffle only ever consider resolvable tracks.
+/// A single playlist's screen: entries in playlist order, with Play and
+/// Shuffle over the entries that still have a file.
 struct PlaylistDetailView: View {
     let playlist: Playlist
     let coordinator: LibraryCoordinator
 
-    // Only the tracks this playlist's entries actually reference (not every
-    // `Track` in the library), turned into a `relativePath -> Track`
-    // dictionary below, so resolving each entry never issues its own query.
-    @Query private var allTracks: [Track]
-    @Environment(\.modelContext) private var modelContext
+    @Query private var availableTracks: [Track]
 
     init(playlist: Playlist, coordinator: LibraryCoordinator) {
         self.playlist = playlist
         self.coordinator = coordinator
-        let paths = Set(PlaylistOps.sortedEntries(of: playlist).map(\.trackPath))
-        _allTracks = Query(filter: #Predicate<Track> { paths.contains($0.relativePath) })
-    }
-
-    private var entries: [PlaylistEntry] {
-        PlaylistOps.sortedEntries(of: playlist)
-    }
-
-    private var tracksByPath: [String: Track] {
-        Dictionary(uniqueKeysWithValues: allTracks.map { ($0.relativePath, $0) })
-    }
-
-    /// Each entry paired with its resolved `Track` (`nil` if dangling) and,
-    /// for resolvable entries, that track's index within `resolvedTracks` —
-    /// the index tapping it should start playback at.
-    private struct Row: Identifiable {
-        let entry: PlaylistEntry
-        let track: Track?
-        let resolvedIndex: Int?
-        var id: PersistentIdentifier {
-            entry.persistentModelID
-        }
-    }
-
-    private func rows(entries: [PlaylistEntry], tracksByPath: [String: Track]) -> [Row] {
-        var resolvedIndex = 0
-        return entries.map { entry in
-            guard let track = tracksByPath[entry.trackPath] else {
-                return Row(entry: entry, track: nil, resolvedIndex: nil)
-            }
-            defer { resolvedIndex += 1 }
-            return Row(entry: entry, track: track, resolvedIndex: resolvedIndex)
-        }
+        _availableTracks = .tracks(referencedBy: playlist)
     }
 
     var body: some View {
-        let entries = entries
-        let tracksByPath = tracksByPath
-        let rows = rows(entries: entries, tracksByPath: tracksByPath)
-        let resolvedTracks = rows.compactMap(\.track)
-
+        let resolved = ResolvedPlaylist(playlist, availableTracks: availableTracks)
         Group {
-            if entries.isEmpty {
+            if resolved.isEmpty {
                 ContentUnavailableView(
                     "No Songs",
                     systemImage: "music.note.list",
@@ -73,32 +30,30 @@ struct PlaylistDetailView: View {
             } else {
                 List {
                     Section {
-                        header(resolvedTracks: resolvedTracks)
+                        header(resolved)
                     }
                     .listRowInsets(EdgeInsets())
                     .listRowSeparator(.hidden)
 
                     Section {
-                        ForEach(rows) { row in
-                            if let track = row.track, let resolvedIndex = row.resolvedIndex {
-                                ResolvableRow(
-                                    index: resolvedIndex,
-                                    track: track,
-                                    isCurrent: coordinator.player.current?.relativePath == track.relativePath
-                                )
-                                .contentShape(Rectangle())
-                                .onTapGesture {
-                                    coordinator.play(resolvedTracks, startingAt: resolvedIndex)
+                        ForEach(Array(resolved.rows.enumerated()), id: \.element.id) { position, row in
+                            PlaylistEntryRow(
+                                row: row,
+                                position: position,
+                                isCurrent: coordinator.player.current?.relativePath == row.track?.relativePath
+                            )
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                if let index = row.playableIndex {
+                                    coordinator.play(resolved.tracks, startingAt: index)
                                 }
-                            } else {
-                                DanglingRow(path: row.entry.trackPath)
                             }
                         }
                         .onMove { source, destination in
-                            PlaylistOps.moveEntries(from: source, to: destination, in: playlist, in: modelContext)
+                            coordinator.playlists.moveEntries(from: source, to: destination, in: playlist)
                         }
                         .onDelete { offsets in
-                            PlaylistOps.removeEntries(at: offsets, from: playlist, in: modelContext)
+                            coordinator.playlists.removeEntries(at: offsets, from: playlist)
                         }
                     }
                 }
@@ -116,101 +71,20 @@ struct PlaylistDetailView: View {
         #endif
     }
 
-    private func header(resolvedTracks: [Track]) -> some View {
+    private func header(_ resolved: ResolvedPlaylist) -> some View {
         VStack(spacing: 12) {
-            Text(metadataLine(resolvedTracks: resolvedTracks))
+            Text(LibraryText.summary(songs: resolved.tracks.count, duration: resolved.totalDuration))
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
             PlayShuffleButtons(
-                isEnabled: !resolvedTracks.isEmpty,
-                onPlay: { play(tracks: resolvedTracks) },
-                onShuffle: { shuffle(tracks: resolvedTracks) }
+                isEnabled: !resolved.tracks.isEmpty,
+                onPlay: { coordinator.play(resolved.tracks) },
+                onShuffle: { coordinator.playShuffled(resolved.tracks) }
             )
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 12)
         .padding(.horizontal, 24)
-    }
-
-    private func metadataLine(resolvedTracks: [Track]) -> String {
-        let totalDuration = resolvedTracks.reduce(0) { $0 + $1.duration }
-        return LibraryText.summary(songs: resolvedTracks.count, duration: totalDuration)
-    }
-
-    private func play(tracks: [Track]) {
-        guard !tracks.isEmpty else { return }
-        coordinator.play(tracks, startingAt: 0)
-    }
-
-    /// Plays the whole playlist shuffled, starting from a random track.
-    private func shuffle(tracks: [Track]) {
-        guard !tracks.isEmpty else { return }
-        coordinator.playShuffled(tracks)
-    }
-}
-
-private struct ResolvableRow: View {
-    let index: Int
-    let track: Track
-    let isCurrent: Bool
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Group {
-                if isCurrent {
-                    Image(systemName: "speaker.wave.2.fill")
-                        .foregroundStyle(.tint)
-                } else {
-                    Text("\(index + 1)")
-                        .font(OldPodTypography.timeReadout())
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .frame(width: 20, alignment: .center)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(track.title)
-                    .font(.body)
-                    .lineLimit(1)
-                Text(track.artist.isEmpty ? "Unknown Artist" : track.artist)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-
-            Spacer()
-
-            DurationText(track.duration)
-        }
-    }
-}
-
-/// A row for an entry whose `trackPath` no longer matches any `Track` (the
-/// file was removed from the library). Not tappable — there's nothing to
-/// play — but still reorderable/removable like any other row.
-private struct DanglingRow: View {
-    let path: String
-
-    private var filenameStem: String {
-        URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent
-    }
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "exclamationmark.triangle")
-                .foregroundStyle(.secondary)
-                .frame(width: 20, alignment: .center)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(filenameStem)
-                    .font(.body)
-                    .foregroundStyle(.secondary)
-                Text("File missing")
-                    .font(.caption)
-                    .italic()
-                    .foregroundStyle(.secondary)
-            }
-        }
     }
 }

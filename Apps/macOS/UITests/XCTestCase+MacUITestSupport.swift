@@ -141,6 +141,15 @@ extension XCTestCase {
         menuItem.click()
     }
 
+    /// A song or entry row's text. The player bar shows the current track's
+    /// title too, and restores the last session at launch, so lookups by
+    /// title skip it.
+    func rowText(_ window: XCUIElement, _ label: String) -> XCUIElement {
+        window.staticTexts
+            .matching(NSPredicate(format: "value == %@ AND identifier != %@", label, "playerBarTitle"))
+            .firstMatch
+    }
+
     /// The displayed text of a plain SwiftUI `Text` on macOS. Unlike iOS,
     /// where `StaticText.label` reports the string, AppKit's static-text
     /// accessibility role carries its content in `AXValue` — `.label`
@@ -151,49 +160,19 @@ extension XCTestCase {
     }
 }
 
-/// Locates the repo's `Fixtures/` directory of generated test MP3s from this
-/// test file's own path, so tests work regardless of the working directory
-/// `xcodebuild` is invoked from, and copies them into the Mac app's sandboxed
-/// library folder if a previous run (or a fresh container) hasn't seeded it
-/// yet. Mirrors `Packages/OldPodKit/Tests/OldPodKitTests/TestFixtures.swift`.
+/// The disposable library the Mac UI tests run against. `make mac-uitest`
+/// recreates it from `Fixtures/` before every run: the app is sandboxed and
+/// so is the test runner, so neither can copy files into the other's
+/// container, but the shell can.
+///
+/// It holds "Fixture One"/"Fixture Two" (The Fixtures, Test Tones), "Fixture
+/// Three" (Other Artist, Covered, has artwork), and "untagged".
 enum MacUITestFixtures {
-    private static let runID = UUID().uuidString
-    /// The four fixture files the whole suite is written against: "Fixture
-    /// One"/"Fixture Two" (The Fixtures, Test Tones), "Fixture Three" (Other
-    /// Artist, Covered, has artwork), and "untagged" (Unknown Artist/Album).
-    static let fileNames = ["cbr-tagged.mp3", "vbr-tagged.mp3", "art-tagged.mp3", "untagged.mp3"]
-
-    static var repoDirectory: URL {
-        // This file lives at <repo>/Apps/macOS/UITests/XCTestCase+MacUITestSupport.swift.
-        // Walk up to <repo>, then down into Fixtures/.
-        var url = URL(fileURLWithPath: #filePath)
-        for _ in 0 ..< 4 {
-            url.deleteLastPathComponent()
-        }
-        return url.appendingPathComponent("Fixtures", isDirectory: true)
-    }
-
-    /// A unique library inside the current app's sandbox, shared only by
-    /// this UI-test process. The real Documents/Music folder is untouched.
     static var containerMusicDirectory: URL {
-        URL(fileURLWithPath: NSHomeDirectory())
-            .appendingPathComponent(
-                "Library/Containers/com.mattreed.theoldpod/Data/Documents/Acceptance/\(runID)",
-                isDirectory: true
-            )
-    }
-
-    /// Ensures every fixture file is present in the sandboxed library folder,
-    /// copying from the repo's `Fixtures/` directory whenever one is
-    /// missing. Safe to call every test run — existing files are left alone.
-    static func ensureSeeded() throws {
-        let directory = containerMusicDirectory
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        for name in fileNames {
-            let destination = directory.appendingPathComponent(name)
-            guard !FileManager.default.fileExists(atPath: destination.path) else { continue }
-            let source = repoDirectory.appendingPathComponent(name)
-            try FileManager.default.copyItem(at: source, to: destination)
-        }
+        // The account's home, not `NSHomeDirectory()`, which inside the
+        // sandboxed runner is the runner's own container.
+        let home = getpwuid(getuid()).flatMap { String(cString: $0.pointee.pw_dir) } ?? NSHomeDirectory()
+        return URL(fileURLWithPath: home)
+            .appendingPathComponent("Library/Containers/com.mattreed.theoldpod/Data/Documents/Acceptance/uitest", isDirectory: true)
     }
 }

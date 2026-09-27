@@ -17,6 +17,7 @@ struct ArtistsListView: View {
 
     var body: some View {
         let artists = LibraryGroups.artists(from: tracks)
+        let filtered = artists.filter { searchText.isEmpty || $0.name.localizedStandardContains(searchText) }
         Group {
             if artists.isEmpty {
                 ContentUnavailableView(
@@ -25,7 +26,7 @@ struct ArtistsListView: View {
                     description: Text("Drop music files into\n\(coordinator.libraryRoot.path)")
                 )
             } else {
-                List(artists.filter { searchText.isEmpty || $0.name.localizedStandardContains(searchText) }) { artist in
+                List(filtered) { artist in
                     NavigationLink {
                         ArtistDetailView(artist: artist, coordinator: coordinator)
                     } label: {
@@ -42,11 +43,7 @@ struct ArtistsListView: View {
             }
         }
         .searchable(text: $searchText, prompt: "Search Artists")
-        .overlay {
-            if !artists.isEmpty, !searchText.isEmpty, !artists.contains(where: { $0.name.localizedStandardContains(searchText) }) {
-                ContentUnavailableView.search(text: searchText)
-            }
-        }
+        .searchEmptyOverlay(isEmpty: !artists.isEmpty && filtered.isEmpty, searchText: searchText)
         .refreshable { await coordinator.refreshLibrary() }
         .toolbar { ToolbarItem(placement: .automatic) { LibraryStatusButton(coordinator: coordinator) } }
     }

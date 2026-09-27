@@ -99,7 +99,7 @@ public enum PlaylistFileFormat {
     /// surrounding whitespace/newlines, then remove every "/" and ":"
     /// character (both are path separators on one Apple platform or
     /// another). Remove newlines and leading dots so names cannot create
-    /// hidden files. An empty result becomes "New Playlist". PlaylistOps
+    /// hidden files. An empty result becomes "New Playlist". PlaylistStore
     /// adds a numbered suffix when this name is already occupied.
     public static func sanitizedFilename(for name: String) -> String {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)

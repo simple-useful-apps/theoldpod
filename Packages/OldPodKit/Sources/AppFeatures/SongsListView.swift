@@ -18,9 +18,6 @@ struct SongsListView: View {
     @State private var searchText = ""
 
     @State private var isPresentingFileImporter = false
-    @State private var isImporting = false
-    @State private var importSkippedCount: Int?
-
     @State private var trackPendingPlaylistAdd: Track?
     @State private var deletionRequest: LibraryDeletionRequest?
 
@@ -40,6 +37,7 @@ struct SongsListView: View {
     }
 
     var body: some View {
+        let filteredTracks = filteredTracks
         Group {
             if !tracks.contains(where: { !$0.isAudiobook }) {
                 ContentUnavailableView(
@@ -69,16 +67,7 @@ struct SongsListView: View {
                                 onAddToPlaylist: { trackPendingPlaylistAdd = track }
                             )
                         }
-                        #if os(iOS)
-                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            Button {
-                                deletionRequest = .songs([SongDeletionTarget(track: track)])
-                            } label: {
-                                Label("Delete Song", systemImage: "trash")
-                            }
-                            .tint(.red)
-                        }
-                        #endif
+                        .deleteSwipeAction("Delete Song") { deletionRequest = .songs([SongDeletionTarget(track: track)]) }
                     }
                 }
                 .listStyle(.plain)
@@ -89,7 +78,7 @@ struct SongsListView: View {
         .toolbar {
             ToolbarItem(placement: .automatic) { LibraryStatusButton(coordinator: coordinator) }
             ToolbarItem(placement: .primaryAction) {
-                if isImporting {
+                if coordinator.importer.isImporting {
                     ProgressView()
                 } else {
                     Button {
@@ -103,33 +92,15 @@ struct SongsListView: View {
         }
         .fileImporter(
             isPresented: $isPresentingFileImporter,
-            allowedContentTypes: [.mp3, .mpeg4Audio],
+            allowedContentTypes: ImportService.supportedContentTypes,
             allowsMultipleSelection: true
         ) { result in
-            guard case let .success(urls) = result else { return }
-            isImporting = true
-            Task {
-                let importResult = await ImportService(libraryRoot: coordinator.libraryRoot).importFiles(at: urls)
-                isImporting = false
-                if !importResult.skipped.isEmpty {
-                    importSkippedCount = importResult.skipped.count
-                }
+            if case let .success(urls) = result {
+                coordinator.importer.importFiles(at: urls)
             }
         }
-        .alert(
-            "Import",
-            isPresented: Binding(
-                get: { importSkippedCount != nil },
-                set: { isPresented in if !isPresented { importSkippedCount = nil } }
-            )
-        ) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            if let importSkippedCount {
-                Text("\(importSkippedCount) file\(importSkippedCount == 1 ? "" : "s") couldn't be imported.")
-            }
-        }
-        .addToPlaylistSheet(for: $trackPendingPlaylistAdd)
+        .importReportAlert(coordinator.importer)
+        .addToPlaylistSheet(for: $trackPendingPlaylistAdd, coordinator: coordinator)
         .libraryDeletionConfirmation(request: $deletionRequest, coordinator: coordinator)
     }
 
@@ -157,7 +128,7 @@ private struct SongRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(track.title)
                     .font(.body)
-                Text(track.artist.isEmpty ? "Unknown Artist" : track.artist)
+                Text(track.displayArtist)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }

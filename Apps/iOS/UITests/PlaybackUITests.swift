@@ -17,7 +17,7 @@ final class PlaybackUITests: XCTestCase {
         let app = XCUIApplication()
         app.launch()
 
-        let row = app.staticTexts["Fixture One"]
+        let row = listText(app, "Fixture One")
         assertExists(row, "Songs list should show Fixture One")
         row.tap()
 
@@ -35,7 +35,7 @@ final class PlaybackUITests: XCTestCase {
         let app = XCUIApplication()
         app.launch()
 
-        app.staticTexts["Fixture One"].tap()
+        listText(app, "Fixture One").tap()
 
         let miniBarTitle = app.staticTexts["miniPlayerTitle"]
         assertExists(miniBarTitle)

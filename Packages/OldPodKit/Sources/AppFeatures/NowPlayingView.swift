@@ -70,15 +70,7 @@ public struct NowPlayingView: View {
 
     private var transportRow: some View {
         HStack(spacing: 28) {
-            Button {
-                player.toggleShuffle()
-            } label: {
-                Image(systemName: "shuffle")
-            }
-            .foregroundStyle(player.isShuffled ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
-            .accessibilityIdentifier("nowPlayingShuffleButton")
-            .accessibilityLabel("Shuffle")
-            .accessibilityValue(player.isShuffled ? "On" : "Off")
+            ShuffleToggle(player: player)
 
             Button {
                 player.previous()
@@ -106,15 +98,7 @@ public struct NowPlayingView: View {
             .accessibilityIdentifier("nowPlayingNextButton")
             .accessibilityLabel("Next Track")
 
-            Button {
-                player.cycleRepeatMode()
-            } label: {
-                Image(systemName: player.repeatMode == .one ? "repeat.1" : "repeat")
-            }
-            .foregroundStyle(player.repeatMode != .off ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
-            .accessibilityIdentifier("nowPlayingRepeatButton")
-            .accessibilityLabel("Repeat")
-            .accessibilityValue(player.repeatMode.rawValue)
+            RepeatToggle(player: player)
         }
         .buttonStyle(.borderless)
         .imageScale(.large)
