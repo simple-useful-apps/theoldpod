@@ -20,7 +20,7 @@ to the implementation/acceptance pass before this subsequent release request.
 - Mac import automatically converts supported, unprotected WMA files to M4A locally, without requiring a user-installed converter. Originals remain unchanged.
 - Preserve available title/artist/album/track metadata and artwork where supported. Show conversion progress and per-file errors; never present an incomplete output as imported music.
 - iPhone audiobook ±15-second controls and the chapter slider must use the playable chapter's real duration rather than a stale zero-length queue snapshot.
-- Prepare missing metadata for the selected book before playback, with honest download/preparation/offline states. Preserve already-known chapter lengths and never display an unknown length as a measured zero.
+- Prepare missing chapter metadata in the background as soon as a book reaches the library (including a book first synced to iPhone as iCloud placeholders), not when it is opened; surface only a failure, with Try Again. Preserve already-known chapter lengths and never display an unknown length as a measured zero.
 - Preserve existing library, deletion, playback-speed, and resume work. Do not alter the user's real media during acceptance.
 
 ## Acceptance targets
@@ -31,7 +31,7 @@ Use newly created copies in isolated app libraries. Prefer computer-driven app f
 2. Verify repeated import and filename collisions do not overwrite unrelated files or create avoidable duplicates.
 3. Verify unsupported/corrupt WMA reports a useful error, leaves no partial library file, and does not block other files in a mixed import.
 4. Verify the Mac app carries its converter and does not execute a Homebrew/system FFmpeg. Verify the iPhone build does not include the helper.
-5. Open a book before playing chapters; known lengths should appear, unknown lengths should show preparation status rather than 0:00, and offline/unavailable files should be explained.
+5. Open a book before playing chapters; known lengths should appear, lengths still being read should show a dash rather than 0:00 (with no preparation banner), and offline/unavailable files should be explained.
 6. On a long real chapter, pause away from the beginning and exercise +15, -15, and slider seeking. Time, audible position, and saved progress should agree without restarting the chapter.
 7. Verify rapid skips, chapter changes, natural advancement, and seeking immediately after load. Preserve paused/playing state and playback speed. The artwork ring is a non-interactive progress display, not a second scrubber.
 8. Quit/relaunch and confirm a valid saved chapter position returns. Verify unrelated music playback and imports still work.
@@ -157,8 +157,8 @@ native Reviewer and Tester roles ran.
 
 ### Short physical-iPhone follow-up
 
-1. Open a book whose chapters have not played. Allow chapter preparation; verify
-   lengths appear without starting each chapter. Repeat with a cloud-only book.
+1. Add a book on the Mac and let it sync. Without opening it on iPhone, wait a
+   moment, then open it; verify lengths are already there. Repeat with a cloud-only book.
 2. Pause around one minute. Tap +15, then -15; confirm the exact change and no restart.
 3. Drag the slider with a finger to the middle, start playback, then drag near
    the end. Confirm the spoken content changes along with the clock.

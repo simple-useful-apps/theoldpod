@@ -27,6 +27,11 @@ public struct PlayShuffleButtons: View {
         HStack(spacing: 12) {
             Button(action: onPlay) {
                 Label("Play", systemImage: "play.fill")
+                    // Inside a List row a Label tints its icon with the accent
+                    // color, which vanishes on the prominent blue button and
+                    // leaves "Play" off-center; the plain style keeps the
+                    // icon in the button's own foreground color.
+                    .labelStyle(.titleAndIcon)
                     .frame(maxWidth: fullWidth ? .infinity : nil)
             }
             .buttonStyle(.borderedProminent)
@@ -35,6 +40,7 @@ public struct PlayShuffleButtons: View {
 
             Button(action: onShuffle) {
                 Label("Shuffle", systemImage: "shuffle")
+                    .labelStyle(.titleAndIcon)
                     .frame(maxWidth: fullWidth ? .infinity : nil)
             }
             .buttonStyle(.bordered)
