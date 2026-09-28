@@ -14,21 +14,22 @@ Working copy for both listings. Character limits noted where App Store Connect e
 
 ## Promotional text (170 chars max, editable without review)
 
-> Plays the MP3s you already have. No account, no streaming, no ads — your library is a folder of files, synced by your own iCloud Drive.
+> Plays the music and audiobooks you already have. No account, no streaming, no ads — your library is a folder of files, synced by your own iCloud Drive.
 
-*(135 characters)*
+*(151 characters)*
 
 ## Description — iOS
 
-> The Old Pod plays the MP3s you already have.
+> The Old Pod plays the music and audiobooks you already have.
 >
 > There is no store, no streaming service, no account to create, and no ads. Your library is a folder of files in your iCloud Drive. Add music from your Mac and it appears on your iPhone; delete a file and it's gone. The files are the truth — the app is just a good way to play them.
 >
-> Browse by artist, album, or song. Make playlists. Search your library. Control playback from the Lock Screen and Control Center. Everything works offline; iCloud is used only to keep your devices' files in step, and a purely local library works too.
+> Browse by artist, album, or song. Make playlists. Search your library. Listen to audiobooks that remember your place and speed. Control playback from the Lock Screen and Control Center. Everything works offline; iCloud is used only to keep your devices' files in step, and a purely local library works too.
 >
 > WHAT IT DOES
-> • Your library is a folder of MP3s — visible in the Files app, never locked in
+> • Your library is a folder of MP3 and M4A files — visible in the Files app, never locked in
 > • Artists, Albums, Songs, and Playlists
+> • Audiobooks with resume, playback speed, and 15-second skips
 > • Queue, shuffle, repeat, and search
 > • Lock Screen and Control Center playback
 > • Works entirely offline
@@ -44,9 +45,11 @@ Working copy for both listings. Character limits noted where App Store Connect e
 Same as iOS through the third paragraph, then:
 
 > WHAT IT DOES
-> • Your library is a folder of MP3s in iCloud Drive — drag files in from the Finder
-> • Sidebar with Artists, Albums, Songs, and Playlists
+> • Your library is a folder of MP3 and M4A files in iCloud Drive — drag files in from the Finder
+> • Unprotected WMA files are converted to M4A on import; your originals are left untouched
+> • Sidebar with Artists, Albums, Songs, Playlists, and Books
 > • A proper song table: sortable columns, search, double-click to play
+> • Get Info to fix a song's title, artist, album, and track details
 > • Media keys, a persistent player bar, and a mini player window
 > • Works entirely offline; no account other than your existing iCloud
 > • No ads, no tracking, nothing collected
