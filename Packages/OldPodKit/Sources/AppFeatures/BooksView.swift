@@ -164,22 +164,13 @@ private struct BookDetailView: View {
         let playingPath = coordinator.player.current?.relativePath
         List {
             Section {
-                if let state = coordinator.books.states[name] {
-                    switch state {
-                    case let .preparing(completed, total):
-                        HStack {
-                            ProgressView()
-                            Text("Preparing chapters… \(completed) of \(total)")
-                                .foregroundStyle(.secondary)
-                        }
-                    case .ready:
-                        EmptyView()
-                    case let .failed(message):
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text(message).foregroundStyle(.secondary)
-                            Button("Try Again") {
-                                Task { await coordinator.books.prepare(named: name, relativePaths: chapters.map(\.relativePath)) }
-                            }
+                // Chapters are prepared in the background as soon as the
+                // book is indexed; this screen only surfaces a failure.
+                if case let .failed(message) = coordinator.books.states[name] {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(message).foregroundStyle(.secondary)
+                        Button("Try Again") {
+                            coordinator.books.prepareIncompleteBooks(among: [name])
                         }
                     }
                 }
@@ -251,9 +242,6 @@ private struct BookDetailView: View {
         .listStyle(.plain)
         #endif
         .navigationTitle(name)
-        .task(id: chapters.map(\.relativePath)) {
-            await coordinator.books.prepare(named: name, relativePaths: chapters.map(\.relativePath))
-        }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button("Delete Book…", systemImage: "trash", role: .destructive) {

@@ -172,6 +172,10 @@ public final class LibraryCoordinator {
                 if indexedPaths != nil {
                     refreshPlayableTracks()
                     lastChecked = Date()
+                    // Read the lengths of any new book's chapters now (on
+                    // iPhone they arrive as iCloud placeholders), rather than
+                    // when the book is first opened.
+                    books.prepareIncompleteBooks(among: Self.bookIDs(in: changes))
                 } else {
                     refreshError = "Library changes couldn’t be saved. Check available storage and try again."
                 }
@@ -189,6 +193,14 @@ public final class LibraryCoordinator {
         nowPlaying.activate()
         playlistSync.migrateAndReconcile()
         playlistSync.startWatching()
+    }
+
+    /// The books with a chapter added or changed in `changes`.
+    static func bookIDs(in changes: [LibraryChange]) -> Set<String> {
+        Set(changes.compactMap { change in
+            guard case let .upsert(file) = change else { return nil }
+            return AudiobookPath.bookID(for: file.relativePath)
+        })
     }
 
     public func playableTracks(from tracks: [Track]) -> [PlayableTrack] {

@@ -12,11 +12,13 @@ public enum BookPreparationState: Sendable, Equatable {
     case failed(String)
 }
 
-/// Loads the metadata a book's chapters are still missing (undownloaded
-/// iCloud placeholders, unread durations) when the user opens the book.
-/// Reads run three files at a time, and the indexer re-checks each file's
-/// version before applying a result, so a slow read cannot resurrect a
-/// chapter that was deleted meanwhile.
+/// Loads the metadata a book's chapters are still missing (iCloud
+/// placeholders whose length hasn't been read yet) as soon as the book
+/// reaches the library, so opening it never waits on preparation. Books are
+/// prepared one at a time in the background; within a book, reads run three
+/// files at a time, and the indexer re-checks each file's version before
+/// applying a result, so a slow read cannot resurrect a chapter that was
+/// deleted meanwhile.
 @MainActor
 @Observable
 public final class BookPreparer {
@@ -26,6 +28,8 @@ public final class BookPreparer {
     private let container: ModelContainer
     private let indexer: LibraryIndexer
     private let onChaptersUpdated: () -> Void
+    private var pending: [String] = []
+    private var worker: Task<Void, Never>?
 
     init(libraryRoot: URL, container: ModelContainer, indexer: LibraryIndexer, onChaptersUpdated: @escaping () -> Void) {
         self.libraryRoot = libraryRoot
@@ -34,12 +38,51 @@ public final class BookPreparer {
         self.onChaptersUpdated = onChaptersUpdated
     }
 
-    public func prepare(named name: String, relativePaths: [String]) async {
+    /// Queues every book among `bookIDs` (every book when `nil`) that still
+    /// has a chapter of unknown length. The coordinator calls this for each
+    /// batch the indexer saves, so a book is prepared when it is added (or
+    /// first synced to this device), not when it is opened.
+    public func prepareIncompleteBooks(among bookIDs: Set<String>? = nil) {
+        guard let tracks = try? container.mainContext.fetch(FetchDescriptor<Track>()) else { return }
+        var incomplete: [String] = []
+        for track in tracks where track.duration <= 0 {
+            guard let book = track.bookID, bookIDs?.contains(book) ?? true,
+                  !incomplete.contains(book), !pending.contains(book) else { continue }
+            incomplete.append(book)
+        }
+        guard !incomplete.isEmpty else { return }
+        pending.append(contentsOf: incomplete.sorted())
+        guard worker == nil else { return }
+        worker = Task { [weak self] in
+            while let self, !self.pending.isEmpty {
+                let name = self.pending.removeFirst()
+                await self.prepare(named: name, relativePaths: self.chapterPaths(of: name))
+            }
+            self?.worker = nil
+        }
+    }
+
+    /// Waits until every queued book has been prepared.
+    func waitUntilIdle() async {
+        while let worker {
+            await worker.value
+        }
+    }
+
+    private func chapterPaths(of name: String) -> [String] {
+        let tracks = (try? container.mainContext.fetch(FetchDescriptor<Track>())) ?? []
+        return tracks.filter { $0.bookID == name }.map(\.relativePath)
+    }
+
+    private func prepare(named name: String, relativePaths: [String]) async {
         guard !relativePaths.isEmpty else { return }
         let requested = Set(relativePaths)
         guard let tracks = try? container.mainContext.fetch(FetchDescriptor<Track>()) else { return }
+        // Only unknown lengths: a chapter iOS evicted to free space keeps its
+        // length and downloads again when played, rather than being fetched
+        // straight back.
         let missing = tracks
-            .filter { requested.contains($0.relativePath) && (!$0.isDownloaded || $0.duration <= 0) }
+            .filter { requested.contains($0.relativePath) && $0.duration <= 0 }
             .map(\.relativePath)
         guard !missing.isEmpty else {
             states[name] = .ready
