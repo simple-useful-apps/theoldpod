@@ -41,6 +41,9 @@ jobs:
         run: xcodegen generate
 
       - name: Package tests
+        # Print a symbolicated backtrace if the test process crashes.
+        env:
+          SWIFT_BACKTRACE: enable=yes,interactive=no,color=no
         run: swift test --package-path Packages/OldPodKit
 
       - name: Build iOS app (unsigned)
