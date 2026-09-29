@@ -1,4 +1,5 @@
 import AppFeatures
+import AppKit
 import AVFoundation
 import CloudFiles
 import DesignSystem
@@ -28,8 +29,8 @@ extension FocusedValues {
 
 /// A deliberately compact, native Mac sheet: the eight ordinary music tags
 /// people most often changed in classic iTunes (plus track/disc totals), the
-/// artwork, and a few read-only file facts — without turning this into a
-/// full tag-inspection utility.
+/// artwork (choose, drop, or remove), and a few read-only file facts —
+/// without turning this into a full tag-inspection utility.
 struct MetadataEditorView: View {
     let request: MetadataEditorPresentation
     let coordinator: LibraryCoordinator
@@ -59,17 +60,12 @@ struct MetadataEditorView: View {
     @State private var didLoad = false
     @State private var versionToken: AudioMetadataVersionToken?
     @State private var errorMessage: String?
+    @State private var artworkChange: AudioArtworkChange = .keep
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .center, spacing: 12) {
-                ArtworkImage(
-                    artworkID: request.artworkID,
-                    directory: coordinator.artworkDirectory,
-                    cornerRadius: 8,
-                    pointSize: 72
-                )
-                .frame(width: 72, height: 72)
+                artworkWell
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Song Info")
                         .font(.title2)
@@ -79,6 +75,14 @@ struct MetadataEditorView: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .help(relativePath)
+                    HStack(spacing: 6) {
+                        Button("Choose Artwork\u{2026}") { chooseArtwork() }
+                        Button("Remove Artwork") { artworkChange = .remove }
+                            .disabled(!hasArtwork)
+                    }
+                    .controlSize(.small)
+                    .disabled(!didLoad || isSaving)
+                    .padding(.top, 3)
                 }
             }
 
@@ -140,6 +144,60 @@ struct MetadataEditorView: View {
         .frame(width: 560)
         .interactiveDismissDisabled(isSaving)
         .task { await load() }
+    }
+
+    /// The artwork Save will write: the file's own until a picture is chosen,
+    /// dropped, or removed. Dropping an image here works like iTunes did.
+    private var artworkWell: some View {
+        Group {
+            if case let .replace(data) = artworkChange, let image = NSImage(data: data) {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+            } else {
+                ArtworkImage(
+                    artworkID: artworkChange == .remove ? nil : request.artworkID,
+                    directory: coordinator.artworkDirectory,
+                    cornerRadius: 8,
+                    pointSize: 72
+                )
+            }
+        }
+        .frame(width: 72, height: 72)
+        .accessibilityLabel("Artwork")
+        .dropDestination(for: URL.self) { urls, _ in
+            guard didLoad, !isSaving, let url = urls.first else { return false }
+            useArtwork(at: url)
+            return true
+        }
+    }
+
+    private var hasArtwork: Bool {
+        switch artworkChange {
+        case .keep: request.artworkID != nil
+        case .replace: true
+        case .remove: false
+        }
+    }
+
+    private func chooseArtwork() {
+        Task {
+            guard let url = await ArtworkPicker.chooseImage() else { return }
+            useArtwork(at: url)
+        }
+    }
+
+    private func useArtwork(at url: URL) {
+        errorMessage = nil
+        Task {
+            do {
+                let data = try await Task.detached { try ArtworkImagePreparer.jpegData(contentsOf: url) }.value
+                artworkChange = .replace(data)
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
     }
 
     /// "[ 3 ] of [ 12 ]" — the classic iTunes track/disc pair.
@@ -267,6 +325,7 @@ struct MetadataEditorView: View {
                 _ = try await coordinator.updateMetadata(
                     relativePath: relativePath,
                     fields: fields,
+                    artwork: artworkChange,
                     expectedVersion: versionToken
                 )
                 dismiss()

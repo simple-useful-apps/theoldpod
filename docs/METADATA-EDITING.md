@@ -3,8 +3,26 @@
 The Mac app can edit title, artist, album, album artist, genre, year, track,
 and disc for one downloaded MP3 or M4A music file at a time. Select a song and
 choose **Library > Get Info**, press Command-I, or use the row's Get Info menu.
-Audiobook chapters, cloud placeholders, batch changes, and artwork editing are
+Audiobook chapters, cloud placeholders, and other batch changes are
 intentionally out of scope.
+
+## Artwork
+
+Get Info also has **Choose Artwork…** and **Remove Artwork** buttons, and you
+can drop an image onto its artwork. The change is written when you press Save.
+
+For a whole album or book, right-click it in the Albums or Books list and
+choose **Choose Artwork…** or **Remove Artwork**. The picture is embedded in
+every downloaded file of that album or book, audiobook chapters included.
+Files still in iCloud are skipped and listed afterwards. Removing artwork asks
+for confirmation first.
+
+Any image macOS can read is accepted. It is converted to an upright JPEG no
+larger than 1200 pixels on its longest side, so a large photo does not bloat
+every track. MP3s get an ID3 front-cover picture and M4As a `covr` atom, both
+through the same stream-copy path, and validation checks that the file then
+carries exactly the new picture (or none). The helper's `image2` demuxer is
+what lets it read the picture.
 
 The app stream-copies the audio through its bundled minimal FFmpeg helper, so
 editing tags does not re-encode it. Before replacing the source, it verifies
@@ -38,6 +56,13 @@ Use disposable copies of one tagged MP3 and one tagged M4A.
    file to confirm the old total was not retained by itself.
 5. Change the source externally while Get Info is open. Saving must refuse to
    overwrite the newer version.
+6. In Get Info, choose a PNG or HEIC picture, then save. Confirm the song's
+   artwork updates in the table, player bar and Albums list. Drop another
+   image onto the artwork, then use Remove Artwork and save; the placeholder
+   should appear.
+7. Right-click an album, choose artwork, and confirm every track and the album
+   row update. Repeat on a book in Books, then remove it from both. With one
+   file evicted to iCloud, confirm it is reported as skipped.
 
 ## Acceptance results — September 19, 2026
 

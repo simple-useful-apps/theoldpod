@@ -29,7 +29,9 @@ iCloud; listening progress is currently saved per device, not synchronized.
 On the Mac, Get Info edits the ordinary tags in one downloaded MP3 or M4A
 music file at a time: title, artist, album, album artist, genre, year, track,
 and disc. The file remains the source of truth and its audio is stream-copied,
-not re-encoded. Batch editing, artwork editing, and audiobook tag editing stay
-out of scope.
+not re-encoded. Get Info can also choose, drop in, or remove a song's
+artwork, and Choose Artwork on an album or book embeds one picture in all of
+its downloaded files, the way iTunes' multi-item Get Info did. Other batch tag
+editing, and audiobook tag editing beyond artwork, stay out of scope.
 
 **For v1:** video, podcasts-as-a-feature, smart playlists, EQ, AirPlay 2 multi-room, CarPlay.

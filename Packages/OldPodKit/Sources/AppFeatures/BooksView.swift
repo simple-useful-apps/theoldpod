@@ -14,6 +14,9 @@ public struct BooksView: View {
     @State private var title = ""
     @State private var searchText = ""
     @State private var deletionRequest: LibraryDeletionRequest?
+    #if os(macOS)
+        @State private var artworkRequest: ArtworkRequest?
+    #endif
 
     public init(coordinator: LibraryCoordinator) {
         self.coordinator = coordinator
@@ -57,6 +60,10 @@ public struct BooksView: View {
                         }
                     }
                     .contextMenu {
+                        #if os(macOS)
+                            ArtworkMenuItems(title: name, tracks: chapters, request: $artworkRequest)
+                            Divider()
+                        #endif
                         Button("Delete Book…", systemImage: "trash", role: .destructive) {
                             deletionRequest = .book(name: name)
                         }
@@ -103,6 +110,9 @@ public struct BooksView: View {
         }
         .importReportAlert(coordinator.importer)
         .libraryDeletionConfirmation(request: $deletionRequest, coordinator: coordinator)
+        #if os(macOS)
+            .artworkRequests($artworkRequest, coordinator: coordinator)
+        #endif
     }
 
     /// "Author · N chapters · h:mm:ss" — author and duration only when known.

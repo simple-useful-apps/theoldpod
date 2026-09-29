@@ -23,6 +23,7 @@ scripts/build-wma-helper.sh and reproduced below for compliance and auditing.
 --enable-demuxer=asf
 --enable-demuxer=mov
 --enable-demuxer=mp3
+--enable-demuxer=image2
 --enable-decoder=wmav1
 --enable-decoder=wmav2
 --enable-decoder=wmapro
