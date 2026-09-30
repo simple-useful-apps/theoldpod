@@ -51,7 +51,7 @@ targets:
         # Bumped when NSUbiquitousContainers changed effect (the OS caches
         # that dictionary per bundle version) — see docs/ICLOUD.md step 4.
         # Build 5 adds audiobook grouping, listening history, speed and skips.
-        CFBundleVersion: "8"
+        CFBundleVersion: "9"
         CFBundleShortVersionString: "1.0"
         UILaunchScreen: {}
         UIBackgroundModes: [audio]
@@ -137,7 +137,7 @@ targets:
         # The app menu title and system alerts read CFBundleName, which
         # otherwise defaults to PRODUCT_NAME ("TheOldPod").
         CFBundleName: The Old Pod
-        CFBundleVersion: "2"
+        CFBundleVersion: "3"
         CFBundleShortVersionString: "1.0"
         LSApplicationCategoryType: public.app-category.music
         UTImportedTypeDeclarations:
