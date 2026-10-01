@@ -60,7 +60,11 @@ struct MetadataEditorView: View {
     @State private var didLoad = false
     @State private var versionToken: AudioMetadataVersionToken?
     @State private var errorMessage: String?
-    @State private var artworkChange: AudioArtworkChange = .keep
+    @State private var artworkSelection = ArtworkSelection()
+
+    private var artworkChange: AudioArtworkChange {
+        artworkSelection.change
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -77,8 +81,11 @@ struct MetadataEditorView: View {
                         .help(relativePath)
                     HStack(spacing: 6) {
                         Button("Choose Artwork\u{2026}") { chooseArtwork() }
-                        Button("Remove Artwork") { artworkChange = .remove }
-                            .disabled(!hasArtwork)
+                        Button("Remove Artwork") {
+                            artworkSelection.remove()
+                            errorMessage = nil
+                        }
+                        .disabled(!hasArtwork && !artworkSelection.isProcessing)
                     }
                     .controlSize(.small)
                     .disabled(!didLoad || isSaving)
@@ -137,13 +144,14 @@ struct MetadataEditorView: View {
                     .disabled(isSaving)
                 Button("Save") { save() }
                     .keyboardShortcut(.defaultAction)
-                    .disabled(isLoading || isSaving || !didLoad || versionToken == nil)
+                    .disabled(isLoading || isSaving || artworkSelection.isProcessing || !didLoad || versionToken == nil)
             }
         }
         .padding(20)
         .frame(width: 560)
         .interactiveDismissDisabled(isSaving)
         .task { await load() }
+        .onDisappear { artworkSelection.invalidate() }
     }
 
     /// The artwork Save will write: the file's own until a picture is chosen,
@@ -184,17 +192,21 @@ struct MetadataEditorView: View {
     private func chooseArtwork() {
         Task {
             guard let url = await ArtworkPicker.chooseImage() else { return }
+            guard didLoad, !isSaving else { return }
             useArtwork(at: url)
         }
     }
 
     private func useArtwork(at url: URL) {
+        guard didLoad, !isSaving else { return }
         errorMessage = nil
+        let request = artworkSelection.begin()
         Task {
             do {
                 let data = try await Task.detached { try ArtworkImagePreparer.jpegData(contentsOf: url) }.value
-                artworkChange = .replace(data)
+                artworkSelection.finish(request, data: data)
             } catch {
+                guard artworkSelection.finish(request, data: nil) else { return }
                 errorMessage = error.localizedDescription
             }
         }
@@ -298,8 +310,9 @@ struct MetadataEditorView: View {
     }
 
     private func save() {
+        guard !isLoading, !isSaving, let artwork = artworkSelection.saveSnapshot,
+              let versionToken, didLoad else { return }
         errorMessage = nil
-        guard let versionToken, didLoad else { return }
         guard let year = number(year, named: "year"),
               let trackNumber = number(trackNumber, named: "track number"),
               let trackTotal = number(trackTotal, named: "track total"),
@@ -325,7 +338,7 @@ struct MetadataEditorView: View {
                 _ = try await coordinator.updateMetadata(
                     relativePath: relativePath,
                     fields: fields,
-                    artwork: artworkChange,
+                    artwork: artwork,
                     expectedVersion: versionToken
                 )
                 dismiss()
