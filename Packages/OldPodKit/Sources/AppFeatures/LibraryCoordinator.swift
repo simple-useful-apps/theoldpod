@@ -28,6 +28,10 @@ public final class LibraryCoordinator {
     public private(set) var lastChecked: Date?
     public private(set) var refreshError: String?
     public private(set) var isDeletingLibraryItems = false
+    #if os(macOS)
+        /// The album or book whose artwork is being rewritten, while that runs.
+        public private(set) var artworkUpdateTitle: String?
+    #endif
 
     private let watcher: any LibraryFolderWatching
     private let artwork: ArtworkStore
@@ -335,28 +339,80 @@ public final class LibraryCoordinator {
         public func updateMetadata(
             relativePath: String,
             fields: AudioMetadataFields,
+            artwork: AudioArtworkChange = .keep,
             expectedVersion: AudioMetadataVersionToken
         ) async throws -> Bool {
             let changed = try await metadataEditor.update(
                 relativePath: relativePath,
                 fields: fields,
+                artwork: artwork,
                 expectedVersion: expectedVersion
             )
             guard changed else { return false }
+            await refreshEditedFiles([relativePath])
+            return true
+        }
 
-            let url = libraryRoot.appendingPathComponent(relativePath)
-            if let version = FileVersion.current(at: url),
-               let metadata = try? await MetadataReader.read(from: url),
-               await indexer.applyMetadataRefreshes([
-                   LibraryMetadataRefresh(relativePath: relativePath, url: url, metadata: metadata, fileVersion: version),
-               ]).contains(relativePath)
-            {
+        /// Embeds one picture in (or removes it from) every downloaded file
+        /// of an album or book, the way iTunes' multi-item Get Info did.
+        /// Files still in iCloud are skipped rather than downloaded.
+        public func setArtwork(
+            _ artwork: AudioArtworkChange,
+            for files: [ArtworkFile],
+            named title: String
+        ) async -> ArtworkUpdateResult {
+            guard artworkUpdateTitle == nil else {
+                return ArtworkUpdateResult(failures: [
+                    ArtworkUpdateFailure(fileName: title, message: "Another artwork change is still in progress."),
+                ])
+            }
+            artworkUpdateTitle = title
+            defer { artworkUpdateTitle = nil }
+
+            var result = ArtworkUpdateResult()
+            var changedPaths: [String] = []
+            for file in files {
+                guard file.isDownloaded else {
+                    result.skippedCount += 1
+                    continue
+                }
+                let path = file.relativePath
+                do {
+                    if try await metadataEditor.updateArtwork(relativePath: path, to: artwork) {
+                        changedPaths.append(path)
+                    }
+                } catch {
+                    result.failures.append(ArtworkUpdateFailure(
+                        fileName: (path as NSString).lastPathComponent,
+                        message: error.localizedDescription
+                    ))
+                }
+            }
+            result.updatedCount = changedPaths.count
+            if !changedPaths.isEmpty {
+                await refreshEditedFiles(changedPaths)
+            }
+            return result
+        }
+
+        /// Re-reads just the rewritten files into the index and the queue's
+        /// snapshots, without replacing the current player item.
+        private func refreshEditedFiles(_ relativePaths: [String]) async {
+            var refreshes: [LibraryMetadataRefresh] = []
+            for path in relativePaths {
+                let url = libraryRoot.appendingPathComponent(path)
+                guard let version = FileVersion.current(at: url),
+                      let metadata = try? await MetadataReader.read(from: url)
+                else { continue }
+                refreshes.append(LibraryMetadataRefresh(relativePath: path, url: url, metadata: metadata, fileVersion: version))
+            }
+            let updated = await indexer.applyMetadataRefreshes(refreshes)
+            if updated.isSuperset(of: relativePaths) {
                 refreshPlayableTracks()
                 lastChecked = Date()
             } else {
                 await refreshLibrary()
             }
-            return true
         }
     #endif
 

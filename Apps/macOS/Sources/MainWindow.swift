@@ -58,6 +58,15 @@ struct MacRootView: View {
                             .controlSize(.small)
                         ImportProgressLabel(coordinator.importer)
                     }
+                } else if let title = coordinator.artworkUpdateTitle {
+                    HStack(spacing: 6) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("Updating artwork for \(title)\u{2026}")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
                 }
             }
             ToolbarItem(placement: .automatic) {
@@ -255,6 +264,7 @@ private struct AlbumsDetailView: View {
     @Query private var tracks: [Track]
     @State private var selectedAlbumID: String?
     @State private var searchText = ""
+    @State private var artworkRequest: ArtworkRequest?
 
     private static func matches(_ album: AlbumGroup, _ query: String) -> Bool {
         album.title.localizedStandardContains(query) || album.artistName.localizedStandardContains(query)
@@ -285,6 +295,9 @@ private struct AlbumsDetailView: View {
                             .lineLimit(1)
                     }
                 }
+                .contextMenu {
+                    ArtworkMenuItems(title: album.title, tracks: albumTracks(album), request: $artworkRequest)
+                }
             }
             // Sidebar + this pane + the table's minimum must fit the default
             // 1000pt window; at 240…340 + 400 the split view overflowed and
@@ -304,5 +317,11 @@ private struct AlbumsDetailView: View {
             )
             .frame(minWidth: 320)
         }
+        .artworkRequests($artworkRequest, coordinator: coordinator)
+    }
+
+    private func albumTracks(_ album: AlbumGroup) -> [Track] {
+        let ids = Set(album.trackIDs)
+        return tracks.filter { ids.contains($0.persistentModelID) }
     }
 }

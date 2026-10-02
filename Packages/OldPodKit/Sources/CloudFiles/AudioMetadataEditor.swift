@@ -80,6 +80,22 @@
         }
     }
 
+    /// What a rewrite does to a file's embedded picture. `replace` carries
+    /// JPEG data, normally from `ArtworkImagePreparer`.
+    public enum AudioArtworkChange: Sendable, Equatable {
+        case keep
+        case replace(Data)
+        case remove
+
+        fileprivate func expected(from original: Data?) -> Data? {
+            switch self {
+            case .keep: original
+            case let .replace(data): data
+            case .remove: nil
+            }
+        }
+    }
+
     public enum AudioMetadataEditorError: LocalizedError, Sendable {
         case helperMissing
         case unsupportedFile
@@ -144,7 +160,7 @@
         public func load(relativePath: String) async throws -> AudioMetadataEditSession {
             let root = root
             return try await Task.detached {
-                let source = try Self.editableFileURL(relativePath, in: root)
+                let source = try Self.editableFileURL(relativePath, in: root, allowsAudiobook: false)
                 let before = try Self.version(of: source)
                 let metadata = try await MetadataReader.read(from: source)
                 guard try Self.version(of: source) == before else {
@@ -160,63 +176,115 @@
         public func update(
             relativePath: String,
             fields: AudioMetadataFields,
+            artwork: AudioArtworkChange = .keep,
             expectedVersion: AudioMetadataVersionToken
         ) async throws -> Bool {
             let root = root
             return try await Task.detached {
-                let source = try Self.editableFileURL(relativePath, in: root)
+                let source = try Self.editableFileURL(relativePath, in: root, allowsAudiobook: false)
                 let requested = try Self.validated(fields.normalized)
-                let originalVersion = try Self.version(of: source)
-                guard originalVersion == expectedVersion.version else {
-                    throw AudioMetadataEditorError.fileChanged
-                }
-                let originalMetadata = try await MetadataReader.read(from: source)
-                guard try Self.version(of: source) == originalVersion else {
-                    throw AudioMetadataEditorError.fileChanged
-                }
-                let originalFields = AudioMetadataFields(metadata: originalMetadata).normalized
-                guard originalFields != requested else { return false }
-                guard let helper = FFmpegHelper.url else { throw AudioMetadataEditorError.helperMissing }
-
-                let temporaryDirectory = FileManager.default.temporaryDirectory
-                    .appendingPathComponent("TheOldPod-Metadata-\(UUID().uuidString)", isDirectory: true)
-                try FileManager.default.createDirectory(at: temporaryDirectory, withIntermediateDirectories: true)
-                defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
-
-                let fileExtension = source.pathExtension.lowercased()
-                let stagedInput = temporaryDirectory.appendingPathComponent("input.\(fileExtension)")
-                // A hidden sibling with the real extension keeps the final
-                // rename on one volume while still letting AVFoundation infer
-                // the candidate's container during validation.
-                let candidate = source.deletingLastPathComponent()
-                    .appendingPathComponent(".theoldpod-metadata-\(UUID().uuidString).\(fileExtension)")
-                defer { try? FileManager.default.removeItem(at: candidate) }
-                do {
-                    try FileManager.default.copyItem(at: source, to: stagedInput)
-                } catch {
-                    throw AudioMetadataEditorError.unavailableFile
-                }
-
-                let originalAudio = try await Self.audioSignature(at: stagedInput)
-                try await Self.rewrite(
-                    helper,
-                    input: stagedInput,
-                    output: candidate,
-                    original: originalFields,
-                    requested: requested
+                return try await Self.rewrite(
+                    source,
+                    relativePath: relativePath,
+                    in: root,
+                    expectedVersion: expectedVersion.version,
+                    requested: { _ in requested },
+                    artwork: artwork
                 )
-                try await Self.validate(
-                    candidate,
-                    requested: requested,
-                    originalMetadata: originalMetadata,
-                    originalAudio: originalAudio
-                )
-                guard try Self.version(of: source) == originalVersion else {
-                    throw AudioMetadataEditorError.fileChanged
-                }
-                try Self.replace(source: source, with: candidate, relativePath: relativePath, root: root, originalVersion: originalVersion)
-                return true
             }.value
+        }
+
+        /// Sets or removes the embedded picture and leaves every other tag
+        /// alone. Unlike `update`, this reads the file's version itself, so
+        /// it suits applying one picture across an album or a book, and it
+        /// accepts audiobook chapters. Returns `false` when nothing changed.
+        @discardableResult
+        public func updateArtwork(relativePath: String, to artwork: AudioArtworkChange) async throws -> Bool {
+            let root = root
+            return try await Task.detached {
+                let source = try Self.editableFileURL(relativePath, in: root, allowsAudiobook: true)
+                return try await Self.rewrite(
+                    source,
+                    relativePath: relativePath,
+                    in: root,
+                    expectedVersion: Self.version(of: source),
+                    requested: { $0 },
+                    artwork: artwork
+                )
+            }.value
+        }
+
+        /// Writes a validated candidate beside `source` and swaps it in.
+        /// `requested` maps the file's current fields to the wanted ones.
+        private static func rewrite(
+            _ source: URL,
+            relativePath: String,
+            in root: LibraryRoot,
+            expectedVersion: FileVersion,
+            requested makeRequested: (AudioMetadataFields) -> AudioMetadataFields,
+            artwork: AudioArtworkChange
+        ) async throws -> Bool {
+            let originalVersion = try version(of: source)
+            guard originalVersion == expectedVersion else {
+                throw AudioMetadataEditorError.fileChanged
+            }
+            let originalMetadata = try await MetadataReader.read(from: source)
+            guard try version(of: source) == originalVersion else {
+                throw AudioMetadataEditorError.fileChanged
+            }
+            let originalFields = AudioMetadataFields(metadata: originalMetadata).normalized
+            let requested = makeRequested(originalFields)
+            let expectedArtwork = artwork.expected(from: originalMetadata.artwork)
+            guard originalFields != requested || expectedArtwork != originalMetadata.artwork else { return false }
+            guard let helper = FFmpegHelper.url else { throw AudioMetadataEditorError.helperMissing }
+
+            let temporaryDirectory = FileManager.default.temporaryDirectory
+                .appendingPathComponent("TheOldPod-Metadata-\(UUID().uuidString)", isDirectory: true)
+            try FileManager.default.createDirectory(at: temporaryDirectory, withIntermediateDirectories: true)
+            defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
+
+            let fileExtension = source.pathExtension.lowercased()
+            let stagedInput = temporaryDirectory.appendingPathComponent("input.\(fileExtension)")
+            // A hidden sibling with the real extension keeps the final
+            // rename on one volume while still letting AVFoundation infer
+            // the candidate's container during validation.
+            let candidate = source.deletingLastPathComponent()
+                .appendingPathComponent(".theoldpod-metadata-\(UUID().uuidString).\(fileExtension)")
+            defer { try? FileManager.default.removeItem(at: candidate) }
+            do {
+                try FileManager.default.copyItem(at: source, to: stagedInput)
+            } catch {
+                throw AudioMetadataEditorError.unavailableFile
+            }
+            var stagedArtwork: URL?
+            if case let .replace(data) = artwork, data != originalMetadata.artwork {
+                // The helper's image2 demuxer picks its decoder by extension.
+                let url = temporaryDirectory.appendingPathComponent("artwork.jpg")
+                try data.write(to: url)
+                stagedArtwork = url
+            }
+
+            let originalAudio = try await audioSignature(at: stagedInput)
+            try await runHelper(
+                helper,
+                input: stagedInput,
+                output: candidate,
+                original: originalFields,
+                requested: requested,
+                artwork: stagedArtwork,
+                removesArtwork: expectedArtwork == nil
+            )
+            try await validate(
+                candidate,
+                requested: requested,
+                expectedArtwork: expectedArtwork,
+                originalAudio: originalAudio
+            )
+            guard try version(of: source) == originalVersion else {
+                throw AudioMetadataEditorError.fileChanged
+            }
+            try replace(source: source, with: candidate, relativePath: relativePath, root: root, originalVersion: originalVersion)
+            return true
         }
 
         private struct AudioSignature: Equatable {
@@ -227,8 +295,8 @@
             let channelCounts: [UInt32]
         }
 
-        private static func editableFileURL(_ relativePath: String, in root: LibraryRoot) throws -> URL {
-            guard !relativePath.hasPrefix("Audiobooks/"),
+        private static func editableFileURL(_ relativePath: String, in root: LibraryRoot, allowsAudiobook: Bool) throws -> URL {
+            guard allowsAudiobook || !relativePath.hasPrefix("Audiobooks/"),
                   AudioFileSupport.supports(URL(fileURLWithPath: relativePath))
             else { throw AudioMetadataEditorError.unsupportedFile }
             guard let values = try root.inspect(relativePath) else { throw AudioMetadataEditorError.unavailableFile }
@@ -265,17 +333,26 @@
             return fields
         }
 
-        private static func rewrite(
+        private static func runHelper(
             _ helper: URL,
             input: URL,
             output: URL,
             original: AudioMetadataFields,
-            requested: AudioMetadataFields
+            requested: AudioMetadataFields,
+            artwork: URL?,
+            removesArtwork: Bool
         ) async throws {
-            var arguments = [
-                "-i", input.path, "-map", "0:a", "-map", "0:v?", "-map_metadata", "0",
-                "-map_chapters", "0", "-c", "copy",
-            ]
+            var arguments = ["-i", input.path]
+            if let artwork {
+                arguments += ["-i", artwork.path, "-map", "0:a", "-map", "1:0"]
+            } else {
+                arguments += ["-map", "0:a"] + (removesArtwork ? [] : ["-map", "0:v?"])
+            }
+            arguments += ["-map_metadata", "0", "-map_chapters", "0", "-c", "copy"]
+            if artwork != nil {
+                // MP3 stores this as an ID3 front-cover picture; M4A as covr.
+                arguments += ["-disposition:v:0", "attached_pic", "-metadata:s:v:0", "comment=Cover (front)"]
+            }
             let values: [(String, String?, String?)] = [
                 ("title", original.title, requested.title),
                 ("artist", original.artist, requested.artist),
@@ -311,7 +388,7 @@
         private static func validate(
             _ output: URL,
             requested: AudioMetadataFields,
-            originalMetadata: TrackMetadata,
+            expectedArtwork: Data?,
             originalAudio: AudioSignature
         ) async throws {
             guard let size = try? output.resourceValues(forKeys: [.fileSizeKey]).fileSize, size > 0 else {
@@ -327,7 +404,7 @@
 
             let rewritten = try await MetadataReader.read(from: output)
             guard AudioMetadataFields(metadata: rewritten).normalized == requested,
-                  rewritten.artwork == originalMetadata.artwork
+                  rewritten.artwork == expectedArtwork
             else { throw AudioMetadataEditorError.validationFailed }
         }
 
@@ -373,7 +450,7 @@
             var operationError: Error?
             coordinator.coordinate(writingItemAt: source, options: .forReplacing, error: &coordinationError) { coordinatedURL in
                 do {
-                    let expected = try editableFileURL(relativePath, in: root)
+                    let expected = try editableFileURL(relativePath, in: root, allowsAudiobook: true)
                     guard coordinatedURL.standardizedFileURL == expected,
                           try version(of: coordinatedURL) == originalVersion
                     else { throw AudioMetadataEditorError.fileChanged }

@@ -2,8 +2,8 @@
 
 The macOS edition of The Old Pod includes a minimal FFmpeg 8.1.2 command-line
 helper solely to decode WMA audio and encode AAC-in-M4A during local import,
-and to stream-copy MP3/M4A audio while updating metadata. Metadata editing
-does not re-encode audio. The helper is not present in the iPhone app and is
+and to stream-copy MP3/M4A audio while updating metadata or artwork. Metadata
+and artwork editing do not re-encode audio. The helper is not present in the iPhone app and is
 never used for DRM removal.
 
 FFmpeg is Copyright (c) 2000-2026 the FFmpeg developers and is licensed under

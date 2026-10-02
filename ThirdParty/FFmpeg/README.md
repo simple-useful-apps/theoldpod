@@ -9,8 +9,8 @@ scripts/build-wma-helper.sh
 The script verifies the checked-in upstream archive checksum, builds isolated
 arm64 and x86_64 static configurations without network, GPL, non-free, or
 unneeded features. In addition to WMA conversion, the minimal build can
-stream-copy MP3 and M4A files when the Mac app updates their metadata. It
-combines the executables at:
+stream-copy MP3 and M4A files when the Mac app updates their metadata or
+embeds a chosen JPEG as their artwork. It combines the executables at:
 
 `.build/wma-helper/universal/TheOldPodWMAConverter`
 
