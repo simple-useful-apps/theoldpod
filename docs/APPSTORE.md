@@ -49,7 +49,7 @@ Same as iOS through the third paragraph, then:
 > • Unprotected WMA files are converted to M4A on import; your originals are left untouched
 > • Sidebar with Artists, Albums, Songs, Playlists, and Books
 > • A proper song table: sortable columns, search, double-click to play
-> • Get Info to fix a song's title, artist, album, and track details
+> • Get Info to fix a song's title, artist, album, track details, and artwork
 > • Media keys, a persistent player bar, and a mini player window
 > • Works entirely offline; no account other than your existing iCloud
 > • No ads, no tracking, nothing collected
