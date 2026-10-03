@@ -1,3 +1,11 @@
+/* Instrument Sans, SIL Open Font License (see InstrumentSans-OFL.txt). */
+@font-face {
+  font-family: "Instrument Sans";
+  src: url("InstrumentSans.woff2") format("woff2");
+  font-weight: 400 700;
+  font-display: swap;
+}
+
 :root {
   color-scheme: light dark;
   --bg: #fbfbf9;
@@ -26,7 +34,7 @@
 body {
   background: var(--bg);
   color: var(--fg);
-  font: 17px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font: 17px/1.6 "Instrument Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -36,12 +44,43 @@ main {
   padding: 5rem 1.5rem 4rem;
 }
 
-.icon {
-  width: 96px;
-  height: 96px;
-  display: block;
+.masthead {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
   margin-bottom: 1.75rem;
-  border-radius: 22px;
+}
+
+.icon {
+  width: 80px;
+  height: 80px;
+  flex: none;
+  border-radius: 18px;
+}
+
+.masthead .tagline {
+  margin-bottom: 0;
+}
+
+.store {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-bottom: 2.25rem;
+}
+
+.store a {
+  padding: 0.4rem 1rem;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.store a:hover {
+  background: var(--accent);
+  color: var(--bg);
+  text-decoration: none;
 }
 
 h1 {
@@ -136,6 +175,12 @@ a:focus-visible {
 @media (max-width: 28rem) {
   main {
     padding-top: 3.5rem;
+  }
+
+  .icon {
+    width: 64px;
+    height: 64px;
+    border-radius: 14px;
   }
 
   .meta {
