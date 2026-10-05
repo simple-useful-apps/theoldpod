@@ -1,3 +1,11 @@
+/* Instrument Sans, SIL Open Font License (see InstrumentSans-OFL.txt). */
+@font-face {
+  font-family: "Instrument Sans";
+  src: url("InstrumentSans.woff2") format("woff2");
+  font-weight: 400 700;
+  font-display: swap;
+}
+
 :root {
   color-scheme: light dark;
   --bg: #fbfbf9;
@@ -26,7 +34,7 @@
 body {
   background: var(--bg);
   color: var(--fg);
-  font: 17px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font: 17px/1.6 "Instrument Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -36,12 +44,34 @@ main {
   padding: 5rem 1.5rem 4rem;
 }
 
-.icon {
-  width: 96px;
-  height: 96px;
-  display: block;
+.masthead {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
   margin-bottom: 1.75rem;
-  border-radius: 22px;
+}
+
+.icon {
+  width: 80px;
+  height: 80px;
+  flex: none;
+  border-radius: 18px;
+}
+
+.masthead .tagline {
+  margin-bottom: 0;
+}
+
+.store {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 2.25rem;
+}
+
+/* Apple's badges must stay unaltered, at least 40px tall. */
+.store img {
+  display: block;
 }
 
 h1 {
@@ -71,9 +101,8 @@ strong {
 }
 
 hr {
-  margin: 2.5rem 0;
+  margin: 1.5rem 0;
   border: 0;
-  border-top: 1px solid var(--rule);
 }
 
 h2 {
@@ -86,16 +115,12 @@ h2 {
 }
 
 ul {
+  margin-bottom: 1.1rem;
   list-style: none;
 }
 
 li {
-  padding: 0.55rem 0;
-  border-bottom: 1px solid var(--rule);
-}
-
-li:last-child {
-  border-bottom: 0;
+  padding: 0.3rem 0;
 }
 
 li span {
@@ -110,6 +135,8 @@ li span {
 
 footer {
   margin-top: 3rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--rule);
   color: var(--muted);
   font-size: 0.9rem;
 }
@@ -136,6 +163,12 @@ a:focus-visible {
 @media (max-width: 28rem) {
   main {
     padding-top: 3.5rem;
+  }
+
+  .icon {
+    width: 64px;
+    height: 64px;
+    border-radius: 14px;
   }
 
   .meta {
